@@ -10,7 +10,7 @@ import type {
 } from "../../state/catalog.ts";
 import { renderResult } from "../../utils/render-result.ts";
 import { state, getSelectionGroup } from "../../state/state.ts";
-import { ucwords } from "../../utils/helpers.ts";
+import { translateItem, translatePalette } from "../../i18n.ts";
 import { COMPACT_FRAME_SIZE, FRAME_SIZE } from "../../state/constants.ts";
 import {
   compilePaletteKey,
@@ -149,7 +149,7 @@ function renderModal(
       },
       [
         m("header.is-flex", [
-          m("h4", opt.label),
+          m("h4", translateItem(opt.label ?? "")),
           m("button", { onclick: onClose }, "x"),
         ]),
         m("section", [
@@ -184,9 +184,9 @@ function renderModal(
                     }),
                     m(
                       "span.palette-version",
-                      paletteVersionMeta?.label +
-                        (material !== opt.material
-                          ? ` - ${materialMeta?.label}`
+                      translateItem(paletteVersionMeta?.label ?? "") +
+                        (material !== opt.material && materialMeta?.label
+                          ? ` - ${translateItem(materialMeta.label)}`
                           : ""),
                     ),
                   ],
@@ -238,7 +238,7 @@ function renderModal(
                             [
                               m(
                                 "span.variant-display-name.has-text-centered.is-size-7",
-                                ucwords(palette.replaceAll("_", " ")),
+                                translatePalette(palette),
                               ),
                               m("canvas.variant-canvas.box.p-0", {
                                 width: compactDisplay
@@ -333,8 +333,8 @@ export const PaletteSelectModal: m.Component<PaletteSelectModalAttrs> = {
       (error: LoadError) => {
         const message =
           error.kind === "loading" && error.chunk === "palette"
-            ? "Loading palette data…"
-            : "Loading layer data…";
+            ? "正在加载调色板数据…"
+            : "正在加载图层数据…";
         return renderLoadingOverlay(onClose, message);
       },
     );

@@ -239,14 +239,14 @@ export async function openLicenseAnimationAdvancedAndSearchArm(page) {
   await animTreeLabel.click();
 
   const advancedHeader = page.locator(".collapsible-header").filter({
-    has: page.getByRole("heading", { name: "Advanced Tools", exact: true }),
+    has: page.getByRole("heading", { name: "高级工具", exact: true }),
   });
   advancedHeader.evaluate((el) => (el.style.scrollMarginTop = "-12px"));
   await advancedHeader.scrollIntoViewIfNeeded();
   await advancedHeader.click();
   await page.locator("#customFileInput").waitFor({ state: "visible" });
 
-  const search = page.locator("input[type=search][placeholder=Search]");
+  const search = page.locator("input[type=search][placeholder=搜索]");
   search.evaluate((el) => (el.style.scrollMarginTop = "-12px"));
   await search.scrollIntoViewIfNeeded();
   await search.fill("arm");

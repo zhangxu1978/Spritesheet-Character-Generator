@@ -14,7 +14,7 @@ function messageForState(state: PreviewState): string | null {
     case "loading-layers":
     case "canvas-not-initialized":
     case "bootstrap-pending":
-      return "Loading layer data…";
+      return "正在加载图层数据…";
   }
 }
 

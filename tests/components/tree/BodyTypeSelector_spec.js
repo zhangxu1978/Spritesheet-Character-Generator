@@ -35,12 +35,12 @@ describe("BodyTypeSelector Component", () => {
     );
 
     expect(buttonLabels).to.deep.equal([
-      "Male",
-      "Female",
-      "Teen",
-      "Child",
-      "Muscular",
-      "Pregnant",
+      "男性",
+      "女性",
+      "青少年",
+      "儿童",
+      "强壮",
+      "孕妇",
     ]);
   });
 

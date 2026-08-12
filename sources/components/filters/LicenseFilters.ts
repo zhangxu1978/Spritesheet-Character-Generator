@@ -68,9 +68,9 @@ export const LicenseFilters: m.Component<
 
       if (toRemove.length > 0) {
         toRemove.forEach((key) => delete state.selections[key]);
-        alert(`Removed ${toRemove.length} incompatible item(s)`);
+        alert(`已移除 ${toRemove.length} 个不兼容的物品`);
       } else {
-        alert("No incompatible items found");
+        alert("未发现不兼容物品");
       }
     };
 
@@ -102,22 +102,22 @@ export const LicenseFilters: m.Component<
           m("span.tree-arrow", {
             class: vnode.state.isExpanded ? "expanded" : "collapsed",
           }),
-          m("span.title.is-6.is-inline", "License Filters"),
+          m("span.title.is-6.is-inline", "许可协议筛选"),
           m(
             "span.is-size-7.has-text-grey.ml-2",
-            `(${enabledCount}/${totalCount} enabled)`,
+            `(已启用 ${enabledCount}/${totalCount})`,
           ),
         ],
       ),
       vnode.state.isExpanded
         ? m("div.content.mt-3", [
             !liteReady
-              ? m("p.is-size-7.has-text-grey.mb-3", "Loading item list…")
+              ? m("p.is-size-7.has-text-grey.mb-3", "正在加载物品列表…")
               : null,
             !creditsReady
               ? m(
                   "p.is-size-7.has-text-grey.mb-3",
-                  "Loading asset license data…",
+                  "正在加载资产许可数据…",
                 )
               : null,
             m(
@@ -141,7 +141,7 @@ export const LicenseFilters: m.Component<
                         target: "_blank",
                         rel: "noopener noreferrer",
                       },
-                      `(Show license${license.urlLabel ? " " + license.urlLabel : ""})`,
+                      `(查看许可${license.urlLabel ? " " + license.urlLabel : ""})`,
                     ),
                   ]),
                 ]),
@@ -153,19 +153,18 @@ export const LicenseFilters: m.Component<
                     m("p.is-size-7", [
                       m(
                         "strong",
-                        `${incompatibleSelections.length} selected item${incompatibleSelections.length > 1 ? "s are" : " is"} incompatible`,
+                        `${incompatibleSelections.length} 个已选物品与当前许可选择不兼容`,
                       ),
-                      " with your current license selection. ",
-                      m("span.has-text-grey", "(marked with ⚠️ above)"),
+                      m("span.has-text-grey", "（上方以 ⚠️ 标记）"),
                     ]),
                   ]),
                   m(
                     "button.button.is-small.is-warning.mt-2",
                     {
                       onclick: removeIncompatibleItems,
-                      title: `Remove ${incompatibleSelections.length} incompatible item${incompatibleSelections.length > 1 ? "s" : ""}`,
+                      title: `移除 ${incompatibleSelections.length} 个不兼容物品`,
                     },
-                    `Remove ${incompatibleSelections.length} Incompatible Asset${incompatibleSelections.length > 1 ? "s" : ""}`,
+                    `移除 ${incompatibleSelections.length} 个不兼容资产`,
                   ),
                 ]
               : null,

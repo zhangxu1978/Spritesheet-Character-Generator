@@ -6,6 +6,7 @@ import {
   isItemLicenseCompatible,
   isItemAnimationCompatible,
 } from "../../state/filters.ts";
+import { translateItem } from "../../i18n.ts";
 
 type CurrentSelectionsAttrs = {
   catalog: CatalogReader;
@@ -16,8 +17,8 @@ export const CurrentSelections: m.Component<CurrentSelectionsAttrs> = {
     const { catalog } = vnode.attrs;
     if (!catalog.isLiteReady()) {
       return m("div", [
-        m("h3.title.is-5", "Current Selections"),
-        m("p.is-size-7.has-text-grey", "Loading item list…"),
+        m("h3.title.is-5", "当前选择"),
+        m("p.is-size-7.has-text-grey", "正在加载物品列表…"),
       ]);
     }
 
@@ -25,15 +26,15 @@ export const CurrentSelections: m.Component<CurrentSelectionsAttrs> = {
 
     if (selectionCount === 0) {
       return m("div", [
-        m("h3.title.is-5", "Current Selections"),
-        m("p.has-text-grey", "No items selected yet"),
+        m("h3.title.is-5", "当前选择"),
+        m("p.has-text-grey", "尚未选择任何物品"),
       ]);
     }
 
     const creditsReady = catalog.isCreditsReady();
 
     return m("div", [
-      m("h3.title.is-5", "Current Selections"),
+      m("h3.title.is-5", "当前选择"),
       m(
         "div.tags",
         Object.entries(state.selections).map(([selectionKey, selection]) => {
@@ -58,23 +59,23 @@ export const CurrentSelections: m.Component<CurrentSelectionsAttrs> = {
             }
           }
           const licensesText = !creditsReady
-            ? "License info loading…"
+            ? "许可信息加载中…"
             : allLicenses.size > 0
-              ? `Licenses: ${Array.from(allLicenses).join(", ")}`
-              : "No license info";
+              ? `许可：${Array.from(allLicenses).join(", ")}`
+              : "无许可信息";
 
           const supportedAnims = meta?.animations ?? [];
           const animsText =
             supportedAnims.length > 0
-              ? `Animations: ${supportedAnims.join(", ")}`
-              : "No animation info";
+              ? `动画：${supportedAnims.join(", ")}`
+              : "无动画信息";
 
           let tooltipText = "";
           if (!isCompatible) {
             const issues: string[] = [];
-            if (!isLicenseCompatible) issues.push("licenses");
-            if (!isAnimCompatible) issues.push("animations");
-            tooltipText = `⚠️ Incompatible with selected ${issues.join(" and ")}\n`;
+            if (!isLicenseCompatible) issues.push("许可");
+            if (!isAnimCompatible) issues.push("动画");
+            tooltipText = `⚠️ 与所选${issues.join("和")}不兼容\n`;
           }
           tooltipText += `${licensesText}\n${animsText}`;
 
@@ -86,7 +87,7 @@ export const CurrentSelections: m.Component<CurrentSelectionsAttrs> = {
               title: creditsReady ? tooltipText : undefined,
             },
             [
-              m("span", selection.name),
+              m("span", translateItem(selection.name)),
               !isCompatible ? m("span.ml-1", "⚠️") : null,
               m("button.delete.is-small", {
                 onclick: () => {

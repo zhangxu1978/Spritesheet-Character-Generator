@@ -21,37 +21,37 @@ export const Credits: m.Component<{ catalog: CatalogReader }> = {
     return m(
       CollapsibleSection,
       {
-        title: "Credits & Attribution",
+        title: "署名与致谢",
         defaultOpen: true,
         boxClass: "box",
         id: "credits-section",
       },
       [
         m("p.is-size-7.mb-2", [
-          "You must credit the authors of this artwork. ",
+          "你必须为这些艺术作品标注原作者署名。",
           m(
             "a",
             {
               href: "https://github.com/liberatedpixelcup/Universal-LPC-Spritesheet-Character-Generator/blob/master/README.md",
               target: "_blank",
             },
-            "Detailed attribution instructions",
+            "详细署名说明",
           ),
         ]),
         m("p.is-size-7.mb-3", [
-          "License information for all spritesheets in this generator is available ",
+          "本生成器中所有精灵表的许可信息可查看",
           m(
             "a",
             {
               href: "https://github.com/liberatedpixelcup/Universal-LPC-Spritesheet-Character-Generator/raw/refs/heads/master/CREDITS.csv",
               target: "_blank",
             },
-            "here",
+            "此处",
           ),
         ]),
 
         !state.previewBootstrapRenderDone
-          ? m("p.has-text-grey", "Loading selections…")
+          ? m("p.has-text-grey", "正在加载选择…")
           : allCredits.length > 0
             ? [
                 m(
@@ -61,11 +61,11 @@ export const Credits: m.Component<{ catalog: CatalogReader }> = {
                       m("strong.is-size-6", credit.fileName),
                       credit.notes ? m("p.is-size-7", credit.notes) : null,
                       m("p.is-size-7", [
-                        m("strong", "Licenses: "),
+                        m("strong", "许可："),
                         credit.licenses.join(", "),
                       ]),
                       m("p.is-size-7", [
-                        m("strong", "Authors: "),
+                        m("strong", "作者："),
                         credit.authors.join(", "),
                       ]),
                     ]),
@@ -78,7 +78,7 @@ export const Credits: m.Component<{ catalog: CatalogReader }> = {
                       onclick: () =>
                         downloadFile(creditsToTxt(allCredits), "credits.txt"),
                     },
-                    "Download TXT",
+                    "下载 TXT",
                   ),
                   m(
                     "button.button.is-small",
@@ -86,11 +86,11 @@ export const Credits: m.Component<{ catalog: CatalogReader }> = {
                       onclick: () =>
                         downloadFile(creditsToCsv(allCredits), "credits.csv"),
                     },
-                    "Download CSV",
+                    "下载 CSV",
                   ),
                 ]),
               ]
-            : m("p.has-text-grey", "No items selected"),
+            : m("p.has-text-grey", "尚未选择任何物品"),
       ],
     );
   },

@@ -206,16 +206,16 @@ export const exportSplitAnimations = async (
 
     if (failedStandard.length > 0 || failedCustom.length > 0) {
       alert(
-        `Export completed with some issues:\nFailed to export animations: ${failedStandard.join(
+        `导出完成，但存在一些问题：\n以下动画导出失败：${failedStandard.join(
           ", ",
         )}`,
       );
     } else {
-      alert("Export complete!");
+      alert("导出完成！");
     }
   } catch (err) {
     console.error("Export failed:", err);
-    alert(`Export failed: ${(err as Error).message}`);
+    alert(`导出失败：${(err as Error).message}`);
   } finally {
     endZipExportUiSuspend();
     if (state) {
@@ -321,16 +321,16 @@ export const exportSplitItemSheets = async (
 
     if (failedItems.length > 0) {
       alert(
-        `Export completed with some issues:\nFailed items: ${failedItems.join(
+        `导出完成，但存在一些问题：\n以下物品导出失败：${failedItems.join(
           ", ",
         )}`,
       );
     } else {
-      alert("Export complete!");
+      alert("导出完成！");
     }
   } catch (err) {
     console.error("Export failed:", err);
-    alert(`Export failed: ${(err as Error).message}`);
+    alert(`导出失败：${(err as Error).message}`);
   } finally {
     endZipExportUiSuspend();
     if (state) {
@@ -605,7 +605,7 @@ export const exportSplitItemAnimations = async (
       0,
     );
     if (failedCount > 0) {
-      let msg = "Export completed with some issues:\n";
+      let msg = "导出完成，但存在一些问题：\n";
       for (const [anim, items] of Object.entries(failedStandard)) {
         if (items.length > 0) {
           msg += `${anim}: ${items.join(", ")}\n`;
@@ -613,11 +613,11 @@ export const exportSplitItemAnimations = async (
       }
       alert(msg);
     } else {
-      alert("Export complete!");
+      alert("导出完成！");
     }
   } catch (err) {
     console.error("Export failed:", err);
-    alert(`Export failed: ${(err as Error).message}`);
+    alert(`导出失败：${(err as Error).message}`);
   } finally {
     endZipExportUiSuspend();
     if (state) {
@@ -919,20 +919,20 @@ export const exportIndividualFrames = async (
     // Report results
     const totalFailed = failedAnimations.length + failedCustom.length;
     if (totalFailed > 0) {
-      let msg = "Export completed with some issues:\n";
+      let msg = "导出完成，但存在一些问题：\n";
       if (failedAnimations.length > 0) {
-        msg += `Failed standard animations: ${failedAnimations.join(", ")}\n`;
+        msg += `以下标准动画导出失败：${failedAnimations.join(", ")}\n`;
       }
       if (failedCustom.length > 0) {
-        msg += `Failed custom animations: ${failedCustom.join(", ")}\n`;
+        msg += `以下自定义动画导出失败：${failedCustom.join(", ")}\n`;
       }
       alert(msg);
     } else {
-      alert("Individual frames export complete!");
+      alert("逐帧导出完成！");
     }
   } catch (err) {
     console.error("Individual frames export failed:", err);
-    alert(`Export failed: ${(err as Error).message}`);
+    alert(`导出失败：${(err as Error).message}`);
   } finally {
     endZipExportUiSuspend();
     if (state) {

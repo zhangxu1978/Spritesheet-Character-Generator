@@ -1,5 +1,6 @@
 // Pure utility functions with minimal catalog reads for tree search
 import type { CatalogReader, CategoryTreeNode } from "../state/catalog.ts";
+import { translateText } from "../i18n.ts";
 
 /**
  * Simple ES6 template string replacement
@@ -37,7 +38,12 @@ export function ucwords(str: string): string {
 
 export function matchesSearch(text: string, query: string): boolean {
   if (!query || query.length < 2) return true;
-  return text.toLowerCase().includes(query.toLowerCase());
+  const lowerQuery = query.toLowerCase();
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes(lowerQuery)) return true;
+  // 中文搜索支持：英文原文未命中时，用翻译后的中文再匹配一次
+  const translated = translateText(text).toLowerCase();
+  return translated.includes(lowerQuery);
 }
 
 export function nodeHasMatches(

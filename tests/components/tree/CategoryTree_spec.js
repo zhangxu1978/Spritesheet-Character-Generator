@@ -48,8 +48,8 @@ describe("CategoryTree", function () {
         .getAttribute("aria-busy"),
       "true",
     );
-    assert.include(host.textContent, "Available Items");
-    assert.include(host.textContent, "Loading category index…");
+    assert.include(host.textContent, "可用物品");
+    assert.include(host.textContent, "正在加载类别索引…");
     assert.strictEqual(host.querySelector("button"), null);
   });
 
@@ -70,11 +70,11 @@ describe("CategoryTree", function () {
     m.render(host, m(CategoryTree, { catalog: defaultCatalog }));
 
     const expandBtn = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent.trim() === "Expand Selected",
+      (b) => b.textContent.trim() === "展开已选",
     );
     assert.notEqual(expandBtn, null);
     assert.isTrue(expandBtn.disabled);
-    assert.strictEqual(expandBtn.getAttribute("title"), "Loading item list…");
+    assert.strictEqual(expandBtn.getAttribute("title"), "正在加载物品列表…");
   });
 
   it("renders toolbar, match-body-color control, body selector, and category items", function () {
@@ -105,21 +105,21 @@ describe("CategoryTree", function () {
 
     assert.strictEqual(
       host.querySelector("h3.title")?.textContent?.trim(),
-      "Available Items",
+      "可用物品",
     );
 
     const labels = [...host.querySelectorAll("button")].map((b) =>
       b.textContent.trim(),
     );
     assert.includeMembers(labels, [
-      "Reset all",
-      "Collapse All",
-      "Expand Selected",
-      "CompactDisplay",
+      "重置全部",
+      "全部折叠",
+      "展开已选",
+      "紧凑显示",
     ]);
 
     const expandSelected = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent.trim() === "Expand Selected",
+      (b) => b.textContent.trim() === "展开已选",
     );
     assert.isFalse(expandSelected.disabled);
 
@@ -129,7 +129,7 @@ describe("CategoryTree", function () {
       matchCb.getAttribute("aria-describedby"),
       "match-body-color-label",
     );
-    assert.include(host.textContent, "Match body color");
+    assert.include(host.textContent, "匹配身体颜色");
 
     assert.ok(
       [...host.querySelectorAll(".tree-label")].some((el) =>
@@ -138,7 +138,7 @@ describe("CategoryTree", function () {
     );
     assert.ok(
       [...host.querySelectorAll(".tree-node")].some((el) =>
-        el.textContent.includes("Category Tree Hat"),
+        el.textContent.includes("Category Tree"),
       ),
     );
   });
@@ -174,7 +174,7 @@ describe("CategoryTree", function () {
     m.render(host, m(CategoryTree, { catalog: defaultCatalog }));
 
     const expandBtn = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent.trim() === "Expand Selected",
+      (b) => b.textContent.trim() === "展开已选",
     );
     expandBtn.click();
 
@@ -209,7 +209,7 @@ describe("CategoryTree", function () {
     m.render(host, m(CategoryTree, { catalog: defaultCatalog }));
 
     const collapseBtn = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent.trim() === "Collapse All",
+      (b) => b.textContent.trim() === "全部折叠",
     );
     collapseBtn.click();
 

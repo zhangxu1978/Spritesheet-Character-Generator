@@ -31,19 +31,19 @@ describe("SearchControl", function () {
 
     // Should render an input with type=search and placeholder attribute
     const input = container.querySelector(
-      "input[type=search][placeholder=Search]",
+      "input[type=search][placeholder=搜索]",
     );
     assert.notEqual(input, null);
   });
 
-  it("displays the label 'Search:'", function () {
+  it("displays the label '搜索：'", function () {
     m.render(
       container,
       m(SearchControl, { catalog: { isLiteReady: () => true } }),
     );
 
-    // Should have a label with text "Search:"
-    assert.include(container.textContent, "Search:");
+    // Should have a label with text "搜索："
+    assert.include(container.textContent, "搜索：");
   });
 
   it("input reflects current state value", function () {

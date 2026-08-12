@@ -22,10 +22,10 @@ function renderLoadingHost() {
       m(
         "div.category-tree-loading-overlay",
         { "aria-busy": "true", "aria-live": "polite" },
-        m("span.loading", { "aria-label": "Loading category index" }),
+        m("span.loading", { "aria-label": "正在加载类别索引" }),
       ),
-      m("h3.title.is-5.mb-3", "Available Items"),
-      m("p.has-text-grey.is-size-7", "Loading category index…"),
+      m("h3.title.is-5.mb-3", "可用物品"),
+      m("p.has-text-grey.is-size-7", "正在加载类别索引…"),
     ]),
   ]);
 }
@@ -37,12 +37,12 @@ function renderTree(categoryTree: CategoryTreeShape, catalog: CatalogReader) {
     m(
       "div.is-flex.is-justify-content-space-between.is-align-items-center.mb-3",
       [
-        m("h3.title.is-5.mb-0", "Available Items"),
+        m("h3.title.is-5.mb-0", "可用物品"),
         m("div.buttons.mb-0", [
           m(
             "button.button.is-danger.is-small",
             { onclick: resetAll },
-            "Reset all",
+            "重置全部",
           ),
           m(
             "button.button.is-small",
@@ -51,13 +51,13 @@ function renderTree(categoryTree: CategoryTreeShape, catalog: CatalogReader) {
                 state.expandedNodes = {};
               },
             },
-            "Collapse All",
+            "全部折叠",
           ),
           m(
             "button.button.is-small",
             {
               disabled: !liteReady,
-              title: liteReady ? undefined : "Loading item list…",
+              title: liteReady ? undefined : "正在加载物品列表…",
               onclick: () => {
                 if (!liteReady) return;
                 for (const [, selection] of Object.entries(state.selections)) {
@@ -83,7 +83,7 @@ function renderTree(categoryTree: CategoryTreeShape, catalog: CatalogReader) {
                 }
               },
             },
-            "Expand Selected",
+            "展开已选",
           ),
           m(
             "button.button.is-small",
@@ -93,7 +93,7 @@ function renderTree(categoryTree: CategoryTreeShape, catalog: CatalogReader) {
                 state.compactDisplay = !state.compactDisplay;
               },
             },
-            "CompactDisplay",
+            "紧凑显示",
           ),
         ]),
       ],
@@ -103,7 +103,7 @@ function renderTree(categoryTree: CategoryTreeShape, catalog: CatalogReader) {
         "label.checkbox",
         {
           title:
-            "When enabled, changing body color will automatically update all compatible items (heads, ears, noses, etc.) to the same color variant",
+            "启用后，修改身体颜色将自动把所有兼容物品（头部、耳朵、鼻子等）更新为相同的颜色变体",
         },
         [
           m("input[type=checkbox]", {
@@ -127,7 +127,7 @@ function renderTree(categoryTree: CategoryTreeShape, catalog: CatalogReader) {
               }
             },
           }),
-          " Match body color",
+          " 匹配身体颜色",
         ],
       ),
       m(
@@ -135,7 +135,7 @@ function renderTree(categoryTree: CategoryTreeShape, catalog: CatalogReader) {
         {
           id: "match-body-color-label",
         },
-        "Auto-update heads, ears, and other items when body color changes",
+        "身体颜色变化时自动更新头部、耳朵及其他物品",
       ),
     ]),
     m("div", [

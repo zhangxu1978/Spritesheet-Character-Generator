@@ -40,8 +40,8 @@ describe("CurrentSelections", function () {
 
     m.render(host, m(CurrentSelections, { catalog: defaultCatalog }));
 
-    assert.include(host.textContent, "Current Selections");
-    assert.include(host.textContent, "Loading item list…");
+    assert.include(host.textContent, "当前选择");
+    assert.include(host.textContent, "正在加载物品列表…");
     assert.strictEqual(host.querySelector(".tags"), null);
   });
 
@@ -59,7 +59,7 @@ describe("CurrentSelections", function () {
 
     m.render(host, m(CurrentSelections, { catalog: defaultCatalog }));
 
-    assert.include(host.textContent, "No items selected yet");
+    assert.include(host.textContent, "尚未选择任何物品");
     assert.strictEqual(host.querySelector(".tag"), null);
   });
 
@@ -91,21 +91,21 @@ describe("CurrentSelections", function () {
 
     const heading = host.querySelector("h3.title");
     assert.notEqual(heading, null);
-    assert.strictEqual(heading.textContent, "Current Selections");
+    assert.strictEqual(heading.textContent, "当前选择");
 
     const tags = host.querySelectorAll("span.tag.is-medium.is-info");
     assert.strictEqual(tags.length, 2);
 
-    assert.include(host.textContent, "Test Hat (blue)");
-    assert.include(host.textContent, "Winter Coat (long)");
+    assert.include(host.textContent, "Test 帽子 (blue)");
+    assert.include(host.textContent, "冬季夹克 (long)");
 
     const hatTag = [...host.querySelectorAll("span.tag.is-medium")].find((el) =>
-      el.textContent.includes("Test Hat"),
+      el.textContent.includes("Test"),
     );
     assert.notEqual(hatTag, null);
     const hatTitle = hatTag.getAttribute("title");
-    assert.include(hatTitle, "Licenses: CC0");
-    assert.include(hatTitle, "Animations: walk, idle");
+    assert.include(hatTitle, "许可：CC0");
+    assert.include(hatTitle, "动画：walk, idle");
 
     assert.strictEqual(
       host.querySelectorAll("button.delete.is-small").length,
@@ -135,8 +135,8 @@ describe("CurrentSelections", function () {
     assert.notEqual(tag, null);
     assert.include(tag.textContent, "⚠️");
     const title = tag.getAttribute("title");
-    assert.include(title, "Incompatible");
-    assert.include(title, "licenses");
+    assert.include(title, "不兼容");
+    assert.include(title, "许可");
   });
 
   it("uses warning styling when animation filters exclude item animations", function () {
@@ -160,7 +160,7 @@ describe("CurrentSelections", function () {
     const tag = host.querySelector("span.tag.is-medium.is-warning");
     assert.notEqual(tag, null);
     const title = tag.getAttribute("title");
-    assert.include(title, "animations");
+    assert.include(title, "动画");
   });
 
   it("remove control deletes that selection and updates the view", function () {
@@ -187,6 +187,6 @@ describe("CurrentSelections", function () {
     assert.deepEqual(state.selections, {});
     // `m.render` roots do not always redraw after inline handlers in tests; re-sync the tree.
     m.render(host, m(CurrentSelections, { catalog: defaultCatalog }));
-    assert.include(host.textContent, "No items selected yet");
+    assert.include(host.textContent, "尚未选择任何物品");
   });
 });

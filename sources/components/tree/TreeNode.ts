@@ -13,10 +13,10 @@ import {
   isNodeAnimationCompatible,
 } from "../../state/filters.ts";
 import {
-  capitalize,
   matchesSearch,
   nodeHasMatches,
 } from "../../utils/helpers.ts";
+import { translateCategory, translateItem } from "../../i18n.ts";
 import { ItemWithVariants } from "./ItemWithVariants.ts";
 import { ItemWithRecolors } from "./ItemWithRecolors.ts";
 
@@ -52,7 +52,7 @@ function renderSkeletons(itemIds: string[]) {
 
 function renderItem(itemId: string, meta: ItemMerged, ctx: ItemListCtx) {
   const { isNodeAnimCompatible, searchQuery, catalog } = ctx;
-  const displayName = meta.name;
+  const displayName = translateItem(meta.name);
   const hasVariants = meta.variants && meta.variants.length > 0;
   const hasRecolors = !hasVariants && meta.recolors && meta.recolors.length > 0;
   const isSearchMatch =
@@ -68,7 +68,7 @@ function renderItem(itemId: string, meta: ItemMerged, ctx: ItemListCtx) {
   // Build tooltip text (license list needs credits chunk)
   let licensesText: string;
   if (!catalog.isCreditsReady()) {
-    licensesText = "License info loading…";
+    licensesText = "许可信息加载中…";
   } else {
     const allLicenses = new Set<string>();
     const credits = catalog.getItemCredits(itemId).unwrapOr([]);
@@ -79,22 +79,22 @@ function renderItem(itemId: string, meta: ItemMerged, ctx: ItemListCtx) {
     }
     licensesText =
       allLicenses.size > 0
-        ? `Licenses: ${Array.from(allLicenses).join(", ")}`
-        : "No license info";
+        ? `许可：${Array.from(allLicenses).join(", ")}`
+        : "无许可信息";
   }
 
   const supportedAnims = meta.animations || [];
   const animsText =
     supportedAnims.length > 0
-      ? `Animations: ${supportedAnims.join(", ")}`
-      : "No animation info";
+      ? `动画：${supportedAnims.join(", ")}`
+      : "无动画信息";
 
   let tooltipText = "";
   if (!isCompatible) {
     const issues: string[] = [];
-    if (!isLicenseCompatibleFlag) issues.push("licenses");
-    if (!isAnimCompatibleFlag) issues.push("animations");
-    tooltipText = `⚠️ Incompatible with selected ${issues.join(" and ")}\n`;
+    if (!isLicenseCompatibleFlag) issues.push("许可");
+    if (!isAnimCompatibleFlag) issues.push("动画");
+    tooltipText = `⚠️ 与所选${issues.join("和")}不兼容\n`;
   }
   tooltipText += `${licensesText}\n${animsText}`;
 
@@ -205,13 +205,13 @@ export const TreeNode: m.Component<TreeNodeAttrs> = {
     const supportedAnims = node.animations || [];
     const animsText =
       supportedAnims.length > 0
-        ? `Animations: ${supportedAnims.join(", ")}`
+        ? `动画：${supportedAnims.join(", ")}`
         : null;
 
     // Build tooltip text
     let tooltipText = "";
     if (!isNodeAnimCompatible) {
-      tooltipText = `⚠️ Incompatible with selected animations\n`;
+      tooltipText = `⚠️ 与所选动画不兼容\n`;
     }
     tooltipText += `${animsText}`;
 
@@ -220,7 +220,7 @@ export const TreeNode: m.Component<TreeNodeAttrs> = {
       (!!searchQuery && searchQuery.length >= 2 && hasSearchMatches) ||
       state.expandedNodes[nodePath] ||
       false;
-    const displayName = node.label ?? capitalize(name);
+    const displayName = translateCategory(node.label ?? name);
 
     const categoryTitle = catalog.isLiteReady() ? tooltipText : undefined;
 

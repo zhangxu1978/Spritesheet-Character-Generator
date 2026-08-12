@@ -140,7 +140,7 @@ export const FullSpritesheetPreview: m.Component<
     return m(
       CollapsibleSection,
       {
-        title: "Full Spritesheet Preview",
+        title: "完整精灵表预览",
         defaultOpen: true,
         boxClass: "box mt-4",
       },
@@ -159,7 +159,7 @@ export const FullSpritesheetPreview: m.Component<
                       m.redraw();
                     },
                   }),
-                  " Show transparency grid",
+                  " 显示透明网格",
                 ]),
               ]),
               m("div.mt-1", [
@@ -172,7 +172,7 @@ export const FullSpritesheetPreview: m.Component<
                       m.redraw();
                     },
                   }),
-                  " Replace Mask (Pink)",
+                  " 替换遮罩（粉色）",
                 ]),
               ]),
             ],
@@ -182,7 +182,7 @@ export const FullSpritesheetPreview: m.Component<
               m("div.field-label.is-normal", [
                 m(
                   "label.label.mb-0",
-                  `Zoom: ${Math.round(vnode.state.zoomLevel * 100)}%`,
+                  `缩放：${Math.round(vnode.state.zoomLevel * 100)}%`,
                 ),
               ]),
               m("div.field-body", [
@@ -218,7 +218,7 @@ export const FullSpritesheetPreview: m.Component<
               state.isRenderingCharacter
                 ? m("div.preview-canvas-busy", { "aria-hidden": true }, [
                     m("span.loading", {
-                      "aria-label": "Rendering character",
+                      "aria-label": "正在渲染角色",
                     }),
                   ])
                 : null,

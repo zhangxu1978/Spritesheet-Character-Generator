@@ -23,7 +23,7 @@ import {
 import { debugLog } from "../../utils/debug.ts";
 import type { CatalogReader } from "../../state/catalog.ts";
 
-const zipExportTitle = "Wait for layer data to finish loading";
+const zipExportTitle = "请等待图层数据加载完成";
 
 export const Download: m.Component<{ catalog: CatalogReader }> = {
   view(vnode) {
@@ -39,10 +39,10 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
         );
         debugLog(json);
         await navigator.clipboard.writeText(json);
-        alert("Exported to clipboard!");
+        alert("已导出到剪贴板！");
       } catch (err) {
         console.error("Failed to copy to clipboard:", err);
-        alert("Failed to copy to clipboard. Please check browser permissions.");
+        alert("复制到剪贴板失败，请检查浏览器权限。");
       }
     };
 
@@ -55,12 +55,10 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
         Object.assign(state, imported);
 
         m.redraw();
-        alert("Imported successfully!");
+        alert("导入成功！");
       } catch (err) {
         console.error("Failed to import from clipboard:", err);
-        alert(
-          "Failed to import. Please check clipboard content and browser permissions.",
-        );
+        alert("导入失败，请检查剪贴板内容和浏览器权限。");
       }
     };
 
@@ -72,7 +70,7 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
     return m(
       CollapsibleSection,
       {
-        title: "Download",
+        title: "下载",
         defaultOpen: true,
       },
       [
@@ -80,7 +78,7 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
           m(
             "button.button.is-small.is-primary",
             { onclick: saveAsPNG },
-            "Spritesheet (PNG)",
+            "精灵表 (PNG)",
           ),
           m(
             "button.button.is-small",
@@ -95,7 +93,7 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
                 downloadFile(txtContent, "credits.txt", "text/plain");
               },
             },
-            "Credits (TXT)",
+            "署名 (TXT)",
           ),
           m(
             "button.button.is-small",
@@ -110,7 +108,7 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
                 downloadFile(csvContent, "credits.csv", "text/csv");
               },
             },
-            "Credits (CSV)",
+            "署名 (CSV)",
           ),
           m(
             "button.button.is-small.is-info",
@@ -119,7 +117,7 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
               title: zipDisabled ? zipExportTitle : undefined,
               onclick: exportSplitAnimations,
             },
-            "ZIP: Split by animation",
+            "ZIP：按动画拆分",
           ),
           state.zipByAnimation.isRunning ? m("span.loading") : null,
           m(
@@ -129,7 +127,7 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
               title: zipDisabled ? zipExportTitle : undefined,
               onclick: exportSplitItemSheets,
             },
-            "ZIP: Split by item",
+            "ZIP：按物品拆分",
           ),
           state.zipByItem.isRunning ? m("span.loading") : null,
           m(
@@ -139,7 +137,7 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
               title: zipDisabled ? zipExportTitle : undefined,
               onclick: exportSplitItemAnimations,
             },
-            "ZIP: Split by animation and item",
+            "ZIP：按动画与物品拆分",
           ),
           state.zipByAnimationAndItem.isRunning ? m("span.loading") : null,
           m(
@@ -149,7 +147,7 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
               title: zipDisabled ? zipExportTitle : undefined,
               onclick: exportIndividualFrames,
             },
-            "ZIP: Split by animation and frame",
+            "ZIP：按动画与帧拆分",
           ),
           state.zipIndividualFrames && state.zipIndividualFrames.isRunning
             ? m("span.loading")
@@ -157,12 +155,12 @@ export const Download: m.Component<{ catalog: CatalogReader }> = {
           m(
             "button.button.is-small.is-link",
             { onclick: exportToClipboard },
-            "Export to Clipboard (JSON)",
+            "导出到剪贴板 (JSON)",
           ),
           m(
             "button.button.is-small.is-link",
             { onclick: importFromClipboard },
-            "Import from Clipboard (JSON)",
+            "从剪贴板导入 (JSON)",
           ),
         ]),
       ],

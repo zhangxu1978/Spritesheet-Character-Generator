@@ -19,7 +19,7 @@ describe("FiltersPanel", () => {
   it("should render the CollapsibleSection component with correct attributes", () => {
     expect(vnode.tag).to.equal(CollapsibleSection);
     expect(vnode.attrs).to.deep.include({
-      title: "Filters",
+      title: "筛选",
       defaultOpen: true,
     });
   });
