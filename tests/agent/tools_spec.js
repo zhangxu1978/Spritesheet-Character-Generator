@@ -73,6 +73,7 @@ test("agent-handler.mjs exposes the same tool names", () => {
       "clear_",
       "render_",
       "reset_",
+      "suggest_",
     ].some((p) => n.startsWith(p)),
   );
   for (const name of uniqueTs) {

@@ -11,7 +11,6 @@
 //   - It does not decide which tool to call; that's the LLM's job (or the
 //     echo stub on the server).
 
-import { ok, err } from "neverthrow";
 import {
   BODY_TYPE_LIST,
   ANIMATION_LIST,
@@ -400,22 +399,37 @@ interface RenderSpritesheetArgs {
   animation?: string;
   /** If true, return the PNG as base64; otherwise only return metadata. */
   includeImage?: boolean;
+  /**
+   * Optional subset of animations to include in the exported PNG.
+   * Empty / omitted → full sheet. Useful to keep NPC spritesheets small
+   * (e.g. ["idle", "walk"] for a villager, ["idle"] for a stationary NPC).
+   */
+  animations?: string[];
 }
 
 const renderSpritesheetSchema: ToolSchema = {
   name: "render_spritesheet",
   description:
-    "把当前 session 渲染到 offscreen canvas，返回 PNG（base64）。在调用任何会改动作的 set_animation 之后想看效果时调一次即可，PNG 本身和动画选择无关——动画只决定预览时显示哪一行。",
+    "把当前 session 渲染到 offscreen canvas 并返回 PNG（base64）。" +
+    "默认导出完整精灵表（全部动作，高 3456px）。" +
+    "如果是 NPC / 小怪，建议传 animations 数组只打包需要的动作（例如 villagers 只要 [\"idle\",\"walk\"]，固定摆件只要 [\"idle\"]），这样 PNG 会小很多。",
   parameters: {
     type: "object",
     properties: {
       animation: {
         type: "string",
-        description: "可选：仅更新 session 的 preview animation",
+        description: "可选：仅更新 session 的 preview animation（不影响导出）",
       },
       includeImage: {
         type: "boolean",
-        description: "默认 true。false 时仅返回元数据（width/height/sizeBytes）",
+        description: "默认 true。false 时仅返回元数据（width/height）",
+      },
+      animations: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "可选：要打包进 PNG 的动作列表（如 [\"idle\",\"walk\"]）。" +
+          "传空数组或不传则导出全部动作（完整大表）。",
       },
     },
     additionalProperties: false,
@@ -434,17 +448,36 @@ async function renderSpritesheet(
   }
   await ctx.session.render();
   const includeImage = args.includeImage !== false;
+  const wantAnims = Array.isArray(args.animations) ? args.animations : undefined;
+
   if (!includeImage) {
     const canvas = ctx.session.getCanvas();
+    // Compute what the size *would* be if we exported the selection.
+    const metaCanvas = ctx.session.getCanvasForAnimations(wantAnims);
     return okData({
-      width: canvas?.width ?? 0,
-      height: canvas?.height ?? 0,
+      width: metaCanvas?.width ?? canvas?.width ?? 0,
+      height: metaCanvas?.height ?? canvas?.height ?? 0,
+      fullWidth: canvas?.width ?? 0,
+      fullHeight: canvas?.height ?? 0,
       selections: ctx.session.getSelections(),
       bodyType: ctx.session.getBodyType(),
       animation: ctx.session.getAnimation(),
+      requestedAnimations: wantAnims,
     });
   }
-  const png = await ctx.session.toBase64Png();
+
+  // Use selective export when a list was provided.
+  const png = wantAnims
+    ? await ctx.session.toBase64PngSelected(wantAnims)
+    : await ctx.session.toBase64Png().then((r) =>
+        r.map((base64) => ({
+          base64,
+          width: ctx.session.getCanvas()?.width ?? 0,
+          height: ctx.session.getCanvas()?.height ?? 0,
+          includedAnimations: [] as string[],
+        })),
+      );
+
   if (png.isErr()) {
     return toolError(
       png.error.kind === "canvas-not-initialized" ? "canvas-not-initialized" : "internal",
@@ -453,12 +486,160 @@ async function renderSpritesheet(
   }
   return okData({
     mimeType: "image/png",
-    width: ctx.session.getCanvas()?.width ?? 0,
-    height: ctx.session.getCanvas()?.height ?? 0,
-    base64: png.value,
+    width: png.value.width,
+    height: png.value.height,
+    base64: png.value.base64,
+    fullWidth: ctx.session.getCanvas()?.width ?? 0,
+    fullHeight: ctx.session.getCanvas()?.height ?? 0,
     selections: ctx.session.getSelections(),
     bodyType: ctx.session.getBodyType(),
     animation: ctx.session.getAnimation(),
+    includedAnimations: png.value.includedAnimations,
+    selective: !!(wantAnims && wantAnims.length > 0),
+  });
+}
+
+// ─── Tool: suggest_animation_preset ──────────────────────────────────────
+
+interface SuggestAnimationPresetArgs {
+  /** Optional hint from user ("NPC", "boss", "villager", "player", etc.). */
+  role?: string;
+}
+
+const suggestAnimationPresetSchema: ToolSchema = {
+  name: "suggest_animation_preset",
+  description:
+    "根据角色用途（NPC / 村民 / BOSS / 玩家主角 / 怪物 / 摆件 / 坐骑 等）给出推荐的动作打包清单。" +
+    "这是一个纯咨询工具，不修改 session；你应该在第一次 render_spritesheet 之前先问清用户意图，然后用它生成建议，再让用户确认。",
+  parameters: {
+    type: "object",
+    properties: {
+      role: {
+        type: "string",
+        description: "用户描述的角色定位，例如「村民 NPC」「最终 BOSS」「商店老板」「可操作玩家」",
+      },
+    },
+    additionalProperties: false,
+  },
+};
+
+/**
+ * Curated presets so the model doesn't have to invent a list every time.
+ * Keys are lowercased keyword fragments matched against the user's hint.
+ */
+const ANIMATION_PRESETS: Array<{
+  keywords: string[];
+  label: string;
+  animations: string[];
+  rationale: string;
+}> = [
+  {
+    keywords: ["摆件", "静态", "装饰", "prop", "static", "柱子", "火炬", "招牌", "箱子"],
+    label: "静态摆件",
+    animations: ["idle"],
+    rationale: "没有移动，只需要一个待机帧即可；通常只占 1 行 (256px 高)。",
+  },
+  {
+    keywords: ["村民", "npc", "老板", "平民", "villager", "shop", "老人", "小孩", "路人"],
+    label: "普通 NPC / 村民",
+    animations: ["idle", "walk"],
+    rationale: "大部分时间站着说话，偶尔走动；不需要战斗相关动作。约 2 行 (512px)。",
+  },
+  {
+    keywords: ["商人", "商店", "黑商", "merchant", "banker", "柜员"],
+    label: "商人 / 柜员",
+    animations: ["idle", "emote"],
+    rationale: "站在柜台后，只需待机 + 表情/招呼。",
+  },
+  {
+    keywords: ["坐", "椅子", "王座", "throne", "sit", "赌桌", "吧台"],
+    label: "坐着的角色",
+    animations: ["idle", "sit"],
+    rationale: "有「坐下」动画的 NPC（酒馆、王座、赌场）。",
+  },
+  {
+    keywords: ["门卫", "守卫", "guard", "哨兵", "sentry", "士兵"],
+    label: "守卫 / 哨兵",
+    animations: ["idle", "walk", "hurt"],
+    rationale: "巡逻 + 受击；无需挥砍/射击（除非剧情需要）。",
+  },
+  {
+    keywords: ["小怪", "杂兵", "enemy", "monster", "怪", "小兵"],
+    label: "普通怪物 / 杂兵",
+    animations: ["idle", "walk", "hurt", "slash"],
+    rationale: "需要追击 + 挨打 + 近战攻击；如果远程再补上 shoot。",
+  },
+  {
+    keywords: ["远程怪", "弓手", "法师怪", "archer", "caster", "mage enemy"],
+    label: "远程怪物",
+    animations: ["idle", "walk", "hurt", "shoot", "spellcast"],
+    rationale: "附带射击或施法动作。",
+  },
+  {
+    keywords: ["boss", "首领", "精英", "elite", "头目"],
+    label: "BOSS / 精英怪",
+    animations: ["idle", "walk", "run", "hurt", "slash", "spellcast", "jump"],
+    rationale: "动作越丰富越好；需要时再加 thrust / shoot / 1h_backslash 等。",
+  },
+  {
+    keywords: ["玩家", "主角", "player", "hero", "可操作", "pc"],
+    label: "玩家 / 主角（完整版）",
+    animations: [
+      "spellcast", "thrust", "walk", "slash", "shoot", "hurt",
+      "climb", "idle", "jump", "sit", "emote", "run",
+    ],
+    rationale: "所有常用动作全部打包，方便玩家换装/切武器时复用。",
+  },
+  {
+    keywords: ["坐骑", "宠物", "mount", "pet", "马", "狗", "猫"],
+    label: "坐骑 / 宠物",
+    animations: ["idle", "walk", "run", "hurt"],
+    rationale: "跑走 + 受击即可；复杂的再加 jump / emote。",
+  },
+  {
+    keywords: ["攀爬", "爬梯", "梯子", "climb", "rope", "藤蔓"],
+    label: "需要攀爬的场景角色",
+    animations: ["idle", "walk", "climb"],
+    rationale: "带攀爬专用动画。",
+  },
+];
+
+async function suggestAnimationPreset(
+  _ctx: ToolContext,
+  args: SuggestAnimationPresetArgs,
+): Promise<ToolResult> {
+  const raw = (args.role ?? "").toLowerCase();
+  if (!raw.trim()) {
+    return okData({
+      hint: "请先告诉我这个角色的用途（玩家 / NPC / BOSS / 摆件 / 怪物 / 坐骑 …），我才能给出最适合的动作清单。",
+      presets: ANIMATION_PRESETS.map((p) => ({ label: p.label, animations: p.animations })),
+    });
+  }
+  // Best effort keyword match, fall back to player preset.
+  let best = ANIMATION_PRESETS.find((p) =>
+    p.keywords.some((kw) => raw.includes(kw.toLowerCase())),
+  );
+  if (!best) {
+    // Heuristic: if we can't match, give the villager preset as conservative default.
+    best = ANIMATION_PRESETS.find((p) => p.label === "普通 NPC / 村民") ?? ANIMATION_PRESETS[1];
+  }
+  const matches = ANIMATION_PRESETS.filter((p) =>
+    p.keywords.some((kw) => raw.includes(kw.toLowerCase())),
+  );
+  return okData({
+    matchedRole: args.role,
+    recommended: {
+      label: best.label,
+      animations: best.animations,
+      rationale: best.rationale,
+    },
+    alternatives: matches
+      .filter((m) => m.label !== best!.label)
+      .map((m) => ({ label: m.label, animations: m.animations, rationale: m.rationale })),
+    fullSheetAnimations: [...ALLOWED_ANIMATIONS],
+    tip:
+      "在调用 render_spritesheet 时把推荐列表作为 animations 参数传入，" +
+      "PNG 就只会包含这些行；如果用户之后想要更多动作，可以再次导出完整表。",
   });
 }
 
@@ -481,18 +662,19 @@ async function resetToDefaults(ctx: ToolContext): Promise<ToolResult> {
 // ─── Registration ────────────────────────────────────────────────────────
 
 export const TOOLS: RegisteredTool[] = [
-  { name: listCategoriesSchema.name, schema: listCategoriesSchema, handler: listCategories },
+  { name: listCategoriesSchema.name, schema: listCategoriesSchema, handler: listCategories as RegisteredTool["handler"] },
   { name: listItemsSchema.name, schema: listItemsSchema, handler: listItems as RegisteredTool["handler"] },
-  { name: getItemSchema.name, schema: getItemSchema, handler: getItem },
-  { name: listBodyTypesSchema.name, schema: listBodyTypesSchema, handler: listBodyTypes },
-  { name: listAnimationsSchema.name, schema: listAnimationsSchema, handler: listAnimations },
-  { name: getStateSchema.name, schema: getStateSchema, handler: getState },
-  { name: setBodyTypeSchema.name, schema: setBodyTypeSchema, handler: setBodyType },
+  { name: getItemSchema.name, schema: getItemSchema, handler: getItem as RegisteredTool["handler"] },
+  { name: listBodyTypesSchema.name, schema: listBodyTypesSchema, handler: listBodyTypes as RegisteredTool["handler"] },
+  { name: listAnimationsSchema.name, schema: listAnimationsSchema, handler: listAnimations as RegisteredTool["handler"] },
+  { name: suggestAnimationPresetSchema.name, schema: suggestAnimationPresetSchema, handler: suggestAnimationPreset as RegisteredTool["handler"] },
+  { name: getStateSchema.name, schema: getStateSchema, handler: getState as RegisteredTool["handler"] },
+  { name: setBodyTypeSchema.name, schema: setBodyTypeSchema, handler: setBodyType as RegisteredTool["handler"] },
   { name: setSelectionSchema.name, schema: setSelectionSchema, handler: setSelection as RegisteredTool["handler"] },
-  { name: clearSelectionSchema.name, schema: clearSelectionSchema, handler: clearSelection },
-  { name: setAnimationSchema.name, schema: setAnimationSchema, handler: setAnimation },
-  { name: renderSpritesheetSchema.name, schema: renderSpritesheetSchema, handler: renderSpritesheet },
-  { name: resetToDefaultsSchema.name, schema: resetToDefaultsSchema, handler: resetToDefaults },
+  { name: clearSelectionSchema.name, schema: clearSelectionSchema, handler: clearSelection as RegisteredTool["handler"] },
+  { name: setAnimationSchema.name, schema: setAnimationSchema, handler: setAnimation as RegisteredTool["handler"] },
+  { name: renderSpritesheetSchema.name, schema: renderSpritesheetSchema, handler: renderSpritesheet as RegisteredTool["handler"] },
+  { name: resetToDefaultsSchema.name, schema: resetToDefaultsSchema, handler: resetToDefaults as RegisteredTool["handler"] },
 ];
 
 export function getToolSchemas(): ToolSchema[] {

@@ -10,6 +10,7 @@
 // HTTP API (server/) reuses the same exports, so there is exactly one
 // definition of what "a tool call" is.
 
+import type { Result } from "neverthrow";
 import type { Selections } from "../state/state.ts";
 
 export type ToolErrorKind =
@@ -63,6 +64,19 @@ export interface ToolSession {
   render(): Promise<void>;
   /** Get the offscreen canvas (browser-side only). */
   getCanvas(): HTMLCanvasElement | null;
+  /** Get a canvas with only the requested animations (empty → full sheet). */
+  getCanvasForAnimations(animations?: string[]): HTMLCanvasElement | null;
+  /** Encode full canvas as base64 PNG. Browser-side only. */
+  toBase64Png(): Promise<Result<string, { kind: "canvas-not-initialized" }>>;
+  /** Encode a subset of animations as a compact base64 PNG. */
+  toBase64PngSelected(
+    animations?: string[],
+  ): Promise<
+    Result<
+      { base64: string; width: number; height: number; includedAnimations: string[] },
+      { kind: "canvas-not-initialized" }
+    >
+  >;
 }
 
 /** Per-call context passed to every tool handler. */

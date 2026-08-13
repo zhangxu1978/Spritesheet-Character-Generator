@@ -23,8 +23,8 @@ interface Attrs {
   session: AgentSession;
   /** Latest PNG (base64) produced by the most recent render. */
   lastPngBase64?: string;
-  /** Triggered when user clicks "Download PNG" — session canvas is dumped. */
-  onDownload?: () => void;
+  /** Triggered when user clicks "Download PNG" with selected animations list. */
+  onDownload?: (selectedAnimations?: string[]) => void;
   /** Notifies parent when this component changes the animation. */
   onAnimationChange?: (animation: string) => void;
   /** Whether a request is in flight (used to dim the preview). */
@@ -42,7 +42,30 @@ interface State {
   fpsCounter: number;
   fpsLastTs: number;
   fps: number;
+  /** Download dialog state: open + which animations are checked */
+  downloadDialogOpen: boolean;
+  downloadSelection: Record<string, boolean>;
+  /** Preset shortcut picked in download dialog */
+  downloadPreset: string;
 }
+
+/** Presets available in the download dialog (keep labels short). */
+const DOWNLOAD_PRESETS: Array<{ key: string; label: string; animations: string[] }> = [
+  { key: "full", label: "完整大表", animations: [] },
+  { key: "static", label: "静态摆件", animations: ["idle"] },
+  { key: "npc", label: "NPC (待机+走)", animations: ["idle", "walk"] },
+  { key: "shop", label: "商人 (待机+表情)", animations: ["idle", "emote"] },
+  { key: "guard", label: "守卫", animations: ["idle", "walk", "hurt"] },
+  { key: "enemy", label: "近战小怪", animations: ["idle", "walk", "hurt", "slash"] },
+  { key: "ranged", label: "远程小怪", animations: ["idle", "walk", "hurt", "shoot", "spellcast"] },
+  { key: "boss", label: "BOSS", animations: ["idle", "walk", "run", "hurt", "slash", "spellcast", "jump"] },
+  { key: "player", label: "玩家主角", animations: [
+      "spellcast", "thrust", "walk", "slash", "shoot", "hurt",
+      "climb", "idle", "jump", "sit", "emote", "run",
+    ]
+  },
+  { key: "mount", label: "坐骑/宠物", animations: ["idle", "walk", "run", "hurt"] },
+];
 
 export const AgentPreview: m.Component<Attrs, State> = {
   oninit(vnode) {
@@ -53,6 +76,11 @@ export const AgentPreview: m.Component<Attrs, State> = {
     vnode.state.fpsCounter = 0;
     vnode.state.fpsLastTs = performance.now();
     vnode.state.fps = 0;
+    vnode.state.downloadDialogOpen = false;
+    vnode.state.downloadSelection = {};
+    vnode.state.downloadPreset = "full";
+    // Default download selection: full sheet (all on, but preset=full means "export everything")
+    for (const a of ANIMATIONS) vnode.state.downloadSelection[a.value] = true;
   },
 
   oncreate(vnode) {
@@ -104,7 +132,7 @@ export const AgentPreview: m.Component<Attrs, State> = {
               m(
                 "option",
                 { value: a.value, selected: a.value === current },
-                a.value,
+                `${a.value}${a.label && a.label !== a.value ? ` (${a.label})` : ""}`,
               ),
             ),
           ),
@@ -118,16 +146,25 @@ export const AgentPreview: m.Component<Attrs, State> = {
           m(
             "button.agent-preview__download",
             {
-              onclick: () => vnode.attrs.onDownload?.(),
-              title: "下载当前精灵表 PNG",
+              onclick: () => {
+                vnode.state.downloadDialogOpen = true;
+                // Reset selection to all-on when opening, matches preset=full
+                for (const a of ANIMATIONS) vnode.state.downloadSelection[a.value] = true;
+                vnode.state.downloadPreset = "full";
+                m.redraw();
+              },
+              title: "选择要导出的动作，再下载 PNG",
             },
             [
               m("span.agent-preview__download-icon", "↓"),
-              m("span", "下载 PNG"),
+              m("span", "下载 PNG…"),
             ],
           ),
         ]),
       ]),
+      vnode.state.downloadDialogOpen
+        ? renderDownloadDialog(vnode)
+        : null,
 
       m("div.agent-preview__stage", [
         m("canvas.agent-preview__canvas", {
@@ -170,6 +207,159 @@ export const AgentPreview: m.Component<Attrs, State> = {
     ]);
   },
 };
+
+// ─── Download dialog ────────────────────────────────────────────────────
+
+function renderDownloadDialog(vnode: m.Vnode<Attrs, State>): m.Vnode {
+  const sel = vnode.state.downloadSelection;
+  // Exportable animations (exclude internal-only marked with noExport)
+  const exportable = ANIMATIONS.filter((a) => !(a as { noExport?: boolean }).noExport);
+  const checkedCount = exportable.filter((a) => sel[a.value]).length;
+  const isFull = vnode.state.downloadPreset === "full";
+
+  const applyPreset = (presetKey: string) => {
+    vnode.state.downloadPreset = presetKey;
+    const preset = DOWNLOAD_PRESETS.find((p) => p.key === presetKey);
+    if (!preset) return;
+    if (preset.animations.length === 0) {
+      // full → select every exportable
+      for (const a of exportable) vnode.state.downloadSelection[a.value] = true;
+    } else {
+      for (const a of exportable) vnode.state.downloadSelection[a.value] = false;
+      for (const v of preset.animations) vnode.state.downloadSelection[v] = true;
+    }
+    m.redraw();
+  };
+
+  const close = () => {
+    vnode.state.downloadDialogOpen = false;
+    m.redraw();
+  };
+
+  const doDownload = () => {
+    const picked = exportable
+      .filter((a) => sel[a.value])
+      .map((a) => a.value);
+    // If all are on → pass undefined to mean "full sheet"
+    const allOn = picked.length === exportable.length;
+    vnode.attrs.onDownload?.(allOn ? undefined : picked);
+    close();
+  };
+
+  return m("div.agent-dlmodal", [
+    m("div.agent-dlmodal__backdrop", { onclick: close }),
+    m("div.agent-dlmodal__panel", [
+      m("div.agent-dlmodal__head", [
+        m("h3", "选择要导出的动作"),
+        m(
+          "button.agent-dlmodal__close",
+          { onclick: close, title: "关闭" },
+          "✕",
+        ),
+      ]),
+      m("div.agent-dlmodal__body", [
+        m("div.agent-dlmodal__section", [
+          m("div.agent-dlmodal__section-title", "快速预设"),
+          m(
+            "div.agent-dlmodal__presets",
+            DOWNLOAD_PRESETS.map((p) =>
+              m(
+                "button.agent-dlmodal__chip" +
+                  (vnode.state.downloadPreset === p.key
+                    ? ".agent-dlmodal__chip--active"
+                    : ""),
+                { onclick: () => applyPreset(p.key) },
+                `${p.label}${p.animations.length ? ` · ${p.animations.length} 个动作` : " · 全部"}`,
+              ),
+            ),
+          ),
+        ]),
+        m("div.agent-dlmodal__section", [
+          m("div.agent-dlmodal__section-title", [
+            "逐个勾选",
+            m("span.agent-dlmodal__section-hint", `已选 ${checkedCount}/${exportable.length}`),
+          ]),
+          m(
+            "div.agent-dlmodal__anims",
+            exportable.map((a) =>
+              m(
+                "label.agent-dlmodal__anim",
+                { key: a.value },
+                [
+                  m("input", {
+                    type: "checkbox",
+                    checked: !!sel[a.value],
+                    onchange: (e: Event) => {
+                      const target = e.target as HTMLInputElement;
+                      vnode.state.downloadSelection[a.value] = target.checked;
+                      // Desyncs from preset → mark as custom
+                      vnode.state.downloadPreset = "custom";
+                      m.redraw();
+                    },
+                  }),
+                  m("span.agent-dlmodal__anim-name", a.value),
+                  a.label && a.label !== a.value
+                    ? m("span.agent-dlmodal__anim-label", a.label)
+                    : null,
+                ],
+              ),
+            ),
+          ),
+          m("div.agent-dlmodal__row", [
+            m(
+              "button.agent-dlmodal__linkbtn",
+              {
+                onclick: () => {
+                  for (const a of exportable) vnode.state.downloadSelection[a.value] = true;
+                  vnode.state.downloadPreset = "full";
+                  m.redraw();
+                },
+              },
+              "全选",
+            ),
+            m(
+              "button.agent-dlmodal__linkbtn",
+              {
+                onclick: () => {
+                  for (const a of exportable) vnode.state.downloadSelection[a.value] = false;
+                  vnode.state.downloadPreset = "custom";
+                  m.redraw();
+                },
+              },
+              "清空",
+            ),
+          ]),
+        ]),
+        m(
+          "div.agent-dlmodal__tip",
+          isFull
+            ? "💡 将导出完整精灵表（832 × 3456 px，17 个动作）。玩家主角适合这种模式，NPC 建议用精简版。"
+            : `🎯 只导出勾选的 ${checkedCount} 个动作，图片会比完整表小 ${exportable.length > 0
+                ? Math.round((1 - checkedCount / exportable.length) * 100)
+                : 0}%，非常适合 NPC / 怪物。`,
+        ),
+      ]),
+      m("div.agent-dlmodal__foot", [
+        m(
+          "button.agent-dlmodal__btn.agent-dlmodal__btn--ghost",
+          { onclick: close },
+          "取消",
+        ),
+        m(
+          "button.agent-dlmodal__btn.agent-dlmodal__btn--primary",
+          {
+            disabled: checkedCount === 0,
+            onclick: doDownload,
+          },
+          [
+            m("span", "↓"),
+            m("span", isFull ? "导出完整 PNG" : `导出 ${checkedCount} 个动作 PNG`),
+          ],
+        ),
+      ]),
+    ]),
+  ]);
+}
 
 function oncreateTick(
   vnode: m.Vnode<Attrs, State>,

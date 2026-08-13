@@ -596,13 +596,14 @@ async function runRenderCharacter(
 }
 
 /**
- * Extract a specific animation from the main canvas.
+ * Extract a specific animation from the given source canvas.
  * Returns a new canvas with just that animation.
  */
 export function extractAnimationFromCanvas(
   animationName: string,
+  srcCanvas: HTMLCanvasElement | null = canvas,
 ): HTMLCanvasElement | null {
-  if (!canvas) {
+  if (!srcCanvas) {
     return null;
   }
 
@@ -622,9 +623,9 @@ export function extractAnimationFromCanvas(
   animCanvas.height = srcHeight;
   const animCtx = get2DContext(animCanvas);
 
-  // Copy animation from main canvas
+  // Copy animation from source canvas
   animCtx.drawImage(
-    canvas,
+    srcCanvas,
     0,
     srcY,
     SHEET_WIDTH,
@@ -636,6 +637,75 @@ export function extractAnimationFromCanvas(
   );
 
   return animCanvas;
+}
+
+/**
+ * Extract multiple specified animations from a source canvas and
+ * pack them into a single compact canvas (one animation per row,
+ * preserving the original row layout). If animations is empty or
+ * undefined, returns a copy of the full sheet.
+ */
+export function extractSelectedAnimations(
+  animations: string[],
+  srcCanvas: HTMLCanvasElement | null = canvas,
+): HTMLCanvasElement | null {
+  if (!srcCanvas) return null;
+
+  // No filter → return full sheet copy (backwards compatible)
+  if (!animations || animations.length === 0) {
+    const copy = document.createElement("canvas");
+    copy.width = srcCanvas.width;
+    copy.height = srcCanvas.height;
+    const cctx = get2DContext(copy);
+    cctx.drawImage(srcCanvas, 0, 0);
+    return copy;
+  }
+
+  // Deduplicate while preserving request order
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const a of animations) {
+    if (seen.has(a)) continue;
+    const cfg = animationConfigByName[a];
+    if (!cfg) continue; // skip unknown animations silently
+    seen.add(a);
+    unique.push(a);
+  }
+
+  // Still nothing valid → fall back to full sheet
+  if (unique.length === 0) {
+    const copy = document.createElement("canvas");
+    copy.width = srcCanvas.width;
+    copy.height = srcCanvas.height;
+    const cctx = get2DContext(copy);
+    cctx.drawImage(srcCanvas, 0, 0);
+    return copy;
+  }
+
+  // Compute total height and build row list
+  type Row = { anim: string; row: number; num: number; srcY: number; height: number };
+  const rows: Row[] = [];
+  let totalHeight = 0;
+  for (const a of unique) {
+    const cfg = animationConfigByName[a]!;
+    const srcY = cfg.row * FRAME_SIZE;
+    const height = cfg.num * FRAME_SIZE;
+    rows.push({ anim: a, row: cfg.row, num: cfg.num, srcY, height });
+    totalHeight += height;
+  }
+
+  const out = document.createElement("canvas");
+  out.width = SHEET_WIDTH;
+  out.height = totalHeight;
+  const octx = get2DContext(out);
+
+  let dstY = 0;
+  for (const r of rows) {
+    octx.drawImage(srcCanvas, 0, r.srcY, SHEET_WIDTH, r.height, 0, dstY, SHEET_WIDTH, r.height);
+    dstY += r.height;
+  }
+
+  return out;
 }
 
 /** Error returned by `getCanvas` when called before `initCanvas` runs. */

@@ -33,6 +33,7 @@ interface State {
   provider?: string;
   fallback?: "echo";
   lastToolCount?: number;
+  draft?: string;
 }
 
 export const AgentApp: m.Component<Attrs, State> = {
@@ -115,7 +116,7 @@ export const AgentApp: m.Component<Attrs, State> = {
           lastPngBase64: vnode.state.lastPngBase64,
           pending: vnode.state.pending,
           toolCount: vnode.state.lastToolCount,
-          onDownload: () => onDownload(vnode),
+          onDownload: (anims) => onDownload(vnode, anims),
           onAnimationChange: () => m.redraw(),
         }),
       ]),
@@ -198,16 +199,23 @@ async function onSend(vnode: m.Vnode<Attrs, State>, text: string): Promise<void>
   void session;
 }
 
-function onDownload(vnode: m.Vnode<Attrs, State>): void {
+function onDownload(
+  vnode: m.Vnode<Attrs, State>,
+  selectedAnimations?: string[],
+): void {
   const session = vnode.state.client.getSession();
-  const canvas = session.getCanvas();
+  const canvas = session.getCanvasForAnimations(selectedAnimations) ?? session.getCanvas();
   if (!canvas) return;
+  const tag =
+    selectedAnimations && selectedAnimations.length > 0
+      ? selectedAnimations.join("_")
+      : "full";
   canvas.toBlob((blob) => {
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `character-${Date.now()}.png`;
+    a.download = `character-${tag}-${Date.now()}.png`;
     a.click();
     URL.revokeObjectURL(url);
   }, "image/png");

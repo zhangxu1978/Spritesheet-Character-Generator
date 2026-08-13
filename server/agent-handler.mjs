@@ -65,6 +65,22 @@ const TOOL_SCHEMAS = [
     parameters: { type: "object", properties: {}, additionalProperties: false },
   },
   {
+    name: "suggest_animation_preset",
+    description:
+      "根据角色用途（玩家 / NPC / 村民 / BOSS / 怪物 / 摆件 / 坐骑 等）给出推荐的动作打包清单。" +
+      "纯咨询工具，不会修改 session。在第一次 render_spritesheet 之前使用，可以先给出建议让用户确认。",
+    parameters: {
+      type: "object",
+      properties: {
+        role: {
+          type: "string",
+          description: "用户描述的角色定位，例如「村民 NPC」「最终 BOSS」「可操作玩家」",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "get_state",
     description: "获取当前 session 状态。",
     parameters: { type: "object", properties: {}, additionalProperties: false },
@@ -104,7 +120,7 @@ const TOOL_SCHEMAS = [
   },
   {
     name: "set_animation",
-    description: "切换预览动作。",
+    description: "切换预览动作（仅影响预览时显示的行，不影响导出 PNG 的内容）。",
     parameters: {
       type: "object",
       properties: { animation: { type: "string" } },
@@ -114,10 +130,22 @@ const TOOL_SCHEMAS = [
   },
   {
     name: "render_spritesheet",
-    description: "把当前 session 渲染成 PNG（base64）。",
+    description:
+      "把当前 session 渲染并导出 PNG（base64）。默认导出完整精灵表（所有动作，高 3456px）。" +
+      "如果是 NPC / 小怪 / 摆件等无需全套动作的角色，务必传 animations 数组只打包需要的动作，这样 PNG 会小很多。",
     parameters: {
       type: "object",
-      properties: { animation: { type: "string" }, includeImage: { type: "boolean" } },
+      properties: {
+        animation: { type: "string", description: "可选：仅切换预览动作" },
+        includeImage: { type: "boolean", description: "默认 true；false 时仅返回元数据" },
+        animations: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "可选：要打包进 PNG 的动作列表（如 [\"idle\",\"walk\"]）。" +
+            "不传 / 传空数组 → 导出完整大表。",
+        },
+      },
       additionalProperties: false,
     },
   },
@@ -128,16 +156,35 @@ const TOOL_SCHEMAS = [
   },
 ];
 
-const SYSTEM_PROMPT = `你是一个精灵图生成助手。
-用户会用自然语言描述他们想要的角色（例如「红色头发的女法师，演示施法动作」）。
-你必须通过调用工具来构建和渲染角色：
-- 用 list_categories / list_items / get_item / list_body_types / list_animations 检索可选部件；
-- 用 set_body_type 切换身体类型；
-- 用 set_selection 装备具体部件（必传 selection.itemId / name + variant 或 recolor；typeName 必填，例如 body / head / torso / legs / feet / hair / weapon）；
-- 用 set_animation 切换预览动作；
-- 最后调用 render_spritesheet（includeImage=true）返回 PNG。
-注意：itemId 必须从 list_items / get_item 返回的字段里直接复制，不要凭空编造。
-不要在 text 里直接描述结果，把所有动作通过工具完成。`;
+const SYSTEM_PROMPT = `你是一个精灵图（LPC spritesheet）生成助手。你的工作方式分为「理解意图 → 给出建议 → 确认后执行」三步，不要一上来就直接渲染大表！
+
+## 工作流程（严格遵守）
+
+1. **先理解用户意图**：用户描述角色后，先在心里回答这几个问题：
+   - 这个角色是「可操作玩家 / 主角」还是「NPC」？是哪一类 NPC（村民/商人/门卫/BOSS/小怪/摆件/坐骑）？
+   - 这个角色需要战斗动作吗？需要施法 / 射击吗？需要坐下 / 攀爬吗？
+   - 从用户的描述里提取出外观偏好（性别、头发、衣服颜色、武器等）。
+
+2. **给出建议再动手**：
+   - 调用 suggest_animation_preset(role=...) 工具拿到匹配的推荐动作清单；
+   - 在回复里用自然语言告诉用户：
+     * 「我理解这个角色是 xxx（玩家 / 村民 NPC / 小怪 …）」
+     * 「我建议只导出这几个动作：[idle, walk, ...]，理由是 …；这样输出 PNG 大约 N 行 / 比完整表小 70%」
+     * 「如果没问题我就按这个清单生成；想要完整大表 / 想增减动作请直接说」
+   - **第一次对话不要调用 render_spritesheet**，先等用户确认或修改。
+
+3. **用户确认后再执行**：
+   - 用 list_categories / list_items / get_item 查找部件；
+   - 用 set_body_type / set_selection 装备外观；
+   - 用 set_animation 切换预览（只是方便用户看，不影响 PNG 内容）；
+   - 最后调用 render_spritesheet 时 **务必带上 animations: [...] 参数**（除非用户明确要求完整大表），把上一步确认过的动作列表传进去。
+
+## 其它规则
+- itemId 必须从 list_items / get_item 返回的字段里直接复制，不要编造；
+- selection 必须含 itemId + name，以及 variant 或 recolor；
+- set_selection 必传 typeName（body / head / torso / legs / feet / hair / weapon 等）；
+- 如果用户说「随便 / 随机」，先给 NPC / 村民保守配置而不是完整大表；
+- 不要在 text 里堆砌结果说明，用工具完成动作，text 只做意图确认和建议。`;
 
 /**
  * Pure HTTP handler. Returns nothing on success (writes to res); throws on
@@ -239,6 +286,66 @@ function applyTool(name, args, session) {
           "1h_backslash", "1h_halfslash",
         ].map((v) => ({ value: v, label: v })),
       };
+    case "suggest_animation_preset": {
+      const ANIMATION_PRESETS = [
+        { keywords: ["摆件", "静态", "装饰", "prop", "static", "柱子", "火炬", "招牌", "箱子"],
+          label: "静态摆件", animations: ["idle"],
+          rationale: "没有移动，只需要一个待机帧即可；通常只占 1 行 (256px 高)。" },
+        { keywords: ["村民", "npc", "老板", "平民", "villager", "shop", "老人", "小孩", "路人"],
+          label: "普通 NPC / 村民", animations: ["idle", "walk"],
+          rationale: "大部分时间站着说话，偶尔走动；不需要战斗相关动作。约 2 行 (512px)。" },
+        { keywords: ["商人", "商店", "黑商", "merchant", "banker", "柜员"],
+          label: "商人 / 柜员", animations: ["idle", "emote"],
+          rationale: "站在柜台后，只需待机 + 表情/招呼。" },
+        { keywords: ["坐", "椅子", "王座", "throne", "sit", "赌桌", "吧台"],
+          label: "坐着的角色", animations: ["idle", "sit"],
+          rationale: "有「坐下」动画的 NPC（酒馆、王座、赌场）。" },
+        { keywords: ["门卫", "守卫", "guard", "哨兵", "sentry", "士兵"],
+          label: "守卫 / 哨兵", animations: ["idle", "walk", "hurt"],
+          rationale: "巡逻 + 受击；无需挥砍/射击（除非剧情需要）。" },
+        { keywords: ["小怪", "杂兵", "enemy", "monster", "怪", "小兵"],
+          label: "普通怪物 / 杂兵", animations: ["idle", "walk", "hurt", "slash"],
+          rationale: "需要追击 + 挨打 + 近战攻击；远程再补上 shoot。" },
+        { keywords: ["远程怪", "弓手", "法师怪", "archer", "caster", "mage enemy"],
+          label: "远程怪物", animations: ["idle", "walk", "hurt", "shoot", "spellcast"],
+          rationale: "附带射击或施法动作。" },
+        { keywords: ["boss", "首领", "精英", "elite", "头目"],
+          label: "BOSS / 精英怪", animations: ["idle", "walk", "run", "hurt", "slash", "spellcast", "jump"],
+          rationale: "动作越丰富越好；需要时再加 thrust / shoot 等。" },
+        { keywords: ["玩家", "主角", "player", "hero", "可操作", "pc"],
+          label: "玩家 / 主角（完整版）",
+          animations: ["spellcast", "thrust", "walk", "slash", "shoot", "hurt", "climb", "idle", "jump", "sit", "emote", "run"],
+          rationale: "所有常用动作全部打包。" },
+        { keywords: ["坐骑", "宠物", "mount", "pet", "马", "狗", "猫"],
+          label: "坐骑 / 宠物", animations: ["idle", "walk", "run", "hurt"],
+          rationale: "跑走 + 受击即可；复杂的再加 jump / emote。" },
+        { keywords: ["攀爬", "爬梯", "梯子", "climb", "rope", "藤蔓"],
+          label: "需要攀爬的场景角色", animations: ["idle", "walk", "climb"],
+          rationale: "带攀爬专用动画。" },
+      ];
+      const raw = ((args.role ?? "") + "").toLowerCase();
+      if (!raw.trim()) {
+        return { ok: true, data: {
+          hint: "请先告诉我这个角色的用途",
+          presets: ANIMATION_PRESETS.map((p) => ({ label: p.label, animations: p.animations })),
+        } };
+      }
+      let best = ANIMATION_PRESETS.find((p) => p.keywords.some((kw) => raw.includes((kw + "").toLowerCase())));
+      if (!best) best = ANIMATION_PRESETS[1]; // villager fallback
+      const matches = ANIMATION_PRESETS.filter((p) => p.keywords.some((kw) => raw.includes((kw + "").toLowerCase())));
+      return { ok: true, data: {
+        matchedRole: args.role,
+        recommended: { label: best.label, animations: best.animations, rationale: best.rationale },
+        alternatives: matches
+          .filter((m) => m.label !== best.label)
+          .map((m) => ({ label: m.label, animations: m.animations, rationale: m.rationale })),
+        fullSheetAnimations: [
+          "spellcast", "thrust", "walk", "slash", "shoot", "hurt", "climb",
+          "idle", "jump", "sit", "emote", "run", "combat",
+          "1h_backslash", "1h_halfslash",
+        ],
+      } };
+    }
     case "list_categories":
       return {
         ok: true,
@@ -316,11 +423,15 @@ function applyTool(name, args, session) {
       // Cannot render in plain Node (no DOM/canvas). Signal to the client
       // that it should re-run this tool locally to produce the PNG.
       session.animation = args.animation ?? session.animation;
+      // Pass through the animations filter so the client replay uses it.
+      const wantAnims = Array.isArray(args.animations) ? args.animations : undefined;
       return {
         ok: true,
         data: {
           deferred: true,
           message: "render_spritesheet runs in the browser; client will replay it.",
+          requestedAnimations: wantAnims,
+          selective: !!(wantAnims && wantAnims.length > 0),
           session: snapshot(session),
         },
       };
