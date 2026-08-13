@@ -142,7 +142,11 @@ export function getSpritePath(
   }
 
   // If no variant specified, try to extract from itemId.
-  if (!variant && !recolors) {
+  // Items like `body` / `body_color` ship a bare `<anim>.png` (no `_variant`
+  // suffix) — `matchBodyColor` is the marker that the "variant" lives in the
+  // recolor slot, not the file name. Skip the fallback for those so the file
+  // name resolves to `<basePath><anim>.png`.
+  if (!variant && !recolors && !meta?.matchBodyColor) {
     const parts = itemId.split("_");
     variant = parts[parts.length - 1];
   }

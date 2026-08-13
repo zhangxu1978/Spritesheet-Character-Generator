@@ -13,3 +13,4 @@ computed-style-diff-output/
 **/__screenshots__/
 /.vitest-attachments/
 .tool-versions
+config.json

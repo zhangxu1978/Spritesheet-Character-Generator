@@ -11,6 +11,10 @@ import path from "node:path";
 export function getPurgeContentGlobs(repoRoot) {
   return [
     path.join(repoRoot, "index.html"),
+    // agent.html is a second entry point (Agent page). PurgeCSS must see its
+    // class names so .agent-app / .chat-panel / .agent-preview survive the
+    // critical-CSS pass.
+    path.join(repoRoot, "agent.html"),
     // Scan both .js and .ts — the codebase is mid-migration. PurgeCSS-extracted
     // class names need to come from every source file regardless of extension,
     // otherwise classes used only in .ts files get purged from critical CSS.
@@ -91,6 +95,19 @@ export function getPurgeSafelist() {
       "variants-container",
       "box",
     ],
-    greedy: [/^skeleton-/, /^preview-canvas/, /^category-tree/],
+    greedy: [
+      /^skeleton-/,
+      /^preview-canvas/,
+      /^category-tree/,
+      // Agent page (sources/agent/**). agent.html is a separate entry point,
+      // so PurgeCSS only sees these class names from sources/agent/*.ts
+      // strings. Greedy-match any class starting with the agent prefix so the
+      // redesigned dark theme survives the critical-CSS pass.
+      /^agent-app/,
+      /^chat-panel/,
+      /^chat-msg/,
+      /^chat-tool/,
+      /^agent-preview/,
+    ],
   };
 }

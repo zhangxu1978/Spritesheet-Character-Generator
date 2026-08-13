@@ -11,6 +11,7 @@ import {
   itemMetadataPlugins,
   itemMetadataResolveAliases,
 } from "./vite/wiring.js";
+import { vitePluginAgentApi } from "./vite/vite-plugin-agent-api.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +39,7 @@ export default defineConfig(({ command }) => ({
     rolldownOptions: {
       input: {
         main: "index.html",
+        agent: "agent.html",
       },
       output: {
         codeSplitting: {
@@ -73,5 +75,6 @@ export default defineConfig(({ command }) => ({
     vitePluginBundledCssAfterBulma(),
     getSpritesheetsPlugin(command),
     vitePluginPurgeCriticalCss(),
+    vitePluginAgentApi(),
   ],
 }));

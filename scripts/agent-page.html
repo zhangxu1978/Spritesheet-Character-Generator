@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Agent 对话 — 通用 LPC 精灵表生成器</title>
+	<style>
+		/* Critical loading shell so the dark theme paints before JS hydrates. */
+		html, body { margin: 0; padding: 0; background: #0e1116; color: #e6edf3; }
+		#mithril-agent.loading {
+			min-height: 100vh;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+				"Microsoft YaHei", Roboto, sans-serif;
+			color: #8b95a5;
+			font-size: 0.92rem;
+		}
+		#mithril-agent.loading::before {
+			content: "";
+			display: inline-block;
+			width: 16px;
+			height: 16px;
+			margin-right: 10px;
+			border: 2px solid rgba(124, 92, 255, 0.25);
+			border-top-color: #7c5cff;
+			border-radius: 50%;
+			animation: agent-page-spin 0.9s linear infinite;
+			vertical-align: middle;
+		}
+		@keyframes agent-page-spin { to { transform: rotate(360deg); } }
+	</style>
+  <script type="module" crossorigin src="./assets/agent-CCNjMLcG.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-aKtaBQYM.js">
+  <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-Dezn_h7o.js">
+  <link rel="modulepreload" crossorigin href="./assets/vendor-BjqsbynU.js">
+  <link rel="modulepreload" crossorigin href="./assets/debug-Cqdge0Qb.js">
+  <link rel="modulepreload" crossorigin href="./assets/renderer-hA4HfTv3.js">
+  <link rel="stylesheet" crossorigin href="./assets/agent-Dx__ikhg.css">
+<link rel="modulepreload" crossorigin href="./assets/index-metadata-D5fdzEZ1.js">
+  <link rel="modulepreload" crossorigin href="./assets/item-metadata-CRMqbU9_.js">
+  <link rel="modulepreload" crossorigin href="./assets/layers-metadata-BeYZKKGG.js">
+</head>
+<body>
+	<div id="mithril-agent" class="loading">正在加载 Agent…</div>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "sessionId": "smoke-2",
+  "messages": [
+    { "role": "user", "content": "蓝色法师 施法动作" }
+  ]
+}

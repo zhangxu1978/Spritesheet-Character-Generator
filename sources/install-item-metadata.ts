@@ -64,6 +64,7 @@ export function resetLoadAllMetadataCacheForTests(): void {
 
 /**
  * Parallel `import()` of the five metadata modules; each registers as soon as its file loads.
+ * (原行为,未引入 bundle。)
  */
 export function loadAllMetadata(): Promise<LoadedChunks> {
   loadAllMetadataPromise ??= (async (): Promise<LoadedChunks> => {

@@ -125,6 +125,13 @@ let hashHydrationInitDone = false;
 
 // Wait for DOM to be ready, then mount UI; catalog may already be loading or ready.
 document.addEventListener("DOMContentLoaded", () => {
+  // If the user navigated to #/agent on the main page, hand them off to the
+  // dedicated Agent page so all tooling lives in one entrypoint.
+  if (location.hash === "#/agent") {
+    location.href = "./agent.html";
+    return;
+  }
+
   // Mount roots are static markup in index.html; assert non-null.
   // App is the composition root for catalog DI — services pass through via attrs.
   m.mount(document.getElementById("mithril-filters")!, {
@@ -142,6 +149,20 @@ document.addEventListener("DOMContentLoaded", () => {
     await Promise.all([catalogReady.onIndexReady, catalogReady.onLiteReady]);
     if (hashHydrationInitDone) return;
     hashHydrationInitDone = true;
+
+    // 后端 bundle 可用时,顺手预热默认角色的 sprite PNG,首屏渲染同步命中
+    void (async () => {
+      try {
+        const { fetchSpriteList, preloadSprites, DEFAULT_CHARACTER_ID } =
+          await import("./state/bundle-source.ts");
+        const list = await fetchSpriteList(DEFAULT_CHARACTER_ID);
+        if (list && list.length > 0) {
+          await preloadSprites(list);
+        }
+      } catch {
+        /* bundle 不可用是正常的 — 走原有 loadImage 路径 */
+      }
+    })();
 
     canvasRenderer.initCanvas();
 

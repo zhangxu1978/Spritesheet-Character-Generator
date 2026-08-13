@@ -357,6 +357,33 @@ describe("state/path.ts", () => {
       ).to.equal("spritesheets/combat/combat_idle/v.png");
     });
 
+    it("skips the itemId-fallback variant when matchBodyColor is set (body slot has bare <anim>.png)", () => {
+      const meta = {
+        layers: {
+          layer_1: {
+            muscular: "body/bodies/muscular/",
+          },
+        },
+        matchBodyColor: true,
+      };
+      setPathDeps({
+        animations: [{ value: "slash", label: "Slash" }],
+      });
+      expect(
+        getSpritePath(
+          defaultCatalog,
+          "body",
+          null,
+          null,
+          "muscular",
+          "slash",
+          1,
+          {},
+          meta,
+        )._unsafeUnwrap(),
+      ).to.equal("spritesheets/body/bodies/muscular/slash.png");
+    });
+
     it("derives variant from the last segment of itemId when variant is omitted", () => {
       const meta = {
         layers: {
