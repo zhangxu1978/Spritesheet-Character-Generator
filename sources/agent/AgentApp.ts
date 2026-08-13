@@ -16,6 +16,12 @@ import {
   type ChatEntry,
 } from "./ChatPanel.ts";
 import type { ChatMessage } from "./types.ts";
+import {
+  buildSpritesheetMeta,
+  makePngFilename,
+  makeMetaFilename,
+} from "./spritesheet-meta.ts";
+import { downloadFile } from "../canvas/download.ts";
 
 interface Attrs {
   /** Override base URL for /api/agent/* (mostly for tests). */
@@ -127,7 +133,10 @@ export const AgentApp: m.Component<Attrs, State> = {
   },
 };
 
-async function onSend(vnode: m.Vnode<Attrs, State>, text: string): Promise<void> {
+async function onSend(
+  vnode: m.Vnode<Attrs, State>,
+  text: string,
+): Promise<void> {
   vnode.state.entries.push({
     id: nextEntryId(),
     role: "user",
@@ -157,9 +166,21 @@ async function onSend(vnode: m.Vnode<Attrs, State>, text: string): Promise<void>
         toolResult: result,
       });
       // Track which animations the agent chose to include
-      if (call.name === "render_spritesheet" && result.ok && typeof result.data === "object" && result.data !== null) {
-        const d = result.data as { includedAnimations?: string[]; selective?: boolean };
-        if (d.selective && Array.isArray(d.includedAnimations) && d.includedAnimations.length > 0) {
+      if (
+        call.name === "render_spritesheet" &&
+        result.ok &&
+        typeof result.data === "object" &&
+        result.data !== null
+      ) {
+        const d = result.data as {
+          includedAnimations?: string[];
+          selective?: boolean;
+        };
+        if (
+          d.selective &&
+          Array.isArray(d.includedAnimations) &&
+          d.includedAnimations.length > 0
+        ) {
           vnode.state.lastIncludedAnimations = d.includedAnimations;
         } else {
           vnode.state.lastIncludedAnimations = undefined;
@@ -216,19 +237,41 @@ function onDownload(
   selectedAnimations?: string[],
 ): void {
   const session = vnode.state.client.getSession();
-  const canvas = session.getCanvasForAnimations(selectedAnimations) ?? session.getCanvas();
+  const canvas =
+    session.getCanvasForAnimations(selectedAnimations) ?? session.getCanvas();
   if (!canvas) return;
   const tag =
     selectedAnimations && selectedAnimations.length > 0
       ? selectedAnimations.join("_")
       : "full";
+  const ts = Date.now();
+  const pngFilename = makePngFilename(tag, ts);
   canvas.toBlob((blob) => {
     if (!blob) return;
+    // 1. Drop the PNG via the standard browser download flow.
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `character-${tag}-${Date.now()}.png`;
+    a.download = pngFilename;
     a.click();
     URL.revokeObjectURL(url);
+
+    // 2. Drop a sidecar JSON describing the spritesheet grid.
+    const meta = buildSpritesheetMeta({
+      pngFilename,
+      pngBytes: blob.size,
+      sheetWidth: canvas.width,
+      sheetHeight: canvas.height,
+      bodyType: session.getBodyType(),
+      includedAnimations:
+        selectedAnimations && selectedAnimations.length > 0
+          ? selectedAnimations
+          : undefined,
+    });
+    downloadFile(
+      JSON.stringify(meta, null, 2),
+      makeMetaFilename(pngFilename),
+      "application/json",
+    );
   }, "image/png");
 }

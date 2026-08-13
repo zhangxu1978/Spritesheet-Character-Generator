@@ -34,7 +34,7 @@
     "profile:zip:baseline:quick": "node scripts/zip/zip-export-profile.js --quick --out tmp/baseline-zip-export-profile-quick.json",
     "diff:zip-profile": "node scripts/zip/diff-zip-profile.js",
     "start": "node server/index.mjs",
-    "agent:test": "node --test tests/agent/tools_spec.js tests/agent/agent-handler_spec.js",
+    "agent:test": "node --test tests/agent/tools_spec.js tests/agent/agent-handler_spec.js tests/agent/spritesheet-meta_spec.js",
     "compute-style-dump": "node scripts/computed-style/dump-computed-styles.js",
     "compute-style-dump:mobile": "node scripts/computed-style/dump-computed-styles.js --preset mobile",
     "compute-style-diff-all": "node scripts/computed-style/computed-style-diff-all.js",
