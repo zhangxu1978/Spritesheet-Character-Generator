@@ -108,6 +108,10 @@ export function getPurgeSafelist() {
       /^chat-msg/,
       /^chat-tool/,
       /^agent-preview/,
+      // Agent download modal — classes are only emitted when the user opens
+      // the dialog, so PurgeCSS can't see them in the static HTML. Greedy-match
+      // the whole prefix to keep all modal styles intact.
+      /^agent-dlmodal/,
     ],
   };
 }
