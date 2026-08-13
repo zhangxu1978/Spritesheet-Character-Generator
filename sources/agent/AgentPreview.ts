@@ -31,6 +31,8 @@ interface Attrs {
   pending?: boolean;
   /** Total tool calls executed in the last round (displayed in footer). */
   toolCount?: number;
+  /** Animations included in the last agent-produced PNG (for download dialog default). */
+  lastIncludedAnimations?: string[];
 }
 
 interface State {
@@ -148,9 +150,17 @@ export const AgentPreview: m.Component<Attrs, State> = {
             {
               onclick: () => {
                 vnode.state.downloadDialogOpen = true;
-                // Reset selection to all-on when opening, matches preset=full
-                for (const a of ANIMATIONS) vnode.state.downloadSelection[a.value] = true;
-                vnode.state.downloadPreset = "full";
+                // Default to the animations the agent already selected;
+                // fall back to full sheet if agent didn't do selective export.
+                const included = vnode.attrs.lastIncludedAnimations;
+                if (included && included.length > 0) {
+                  for (const a of ANIMATIONS) vnode.state.downloadSelection[a.value] = false;
+                  for (const v of included) vnode.state.downloadSelection[v] = true;
+                  vnode.state.downloadPreset = "custom";
+                } else {
+                  for (const a of ANIMATIONS) vnode.state.downloadSelection[a.value] = true;
+                  vnode.state.downloadPreset = "full";
+                }
                 m.redraw();
               },
               title: "选择要导出的动作，再下载 PNG",

@@ -95,6 +95,33 @@ const ROLE_KEYWORDS = [
   ["ninja", "忍者", "ninja"],
 ];
 
+// Role / usage presets for selective animation export.
+// Each entry: [keywords..., label, animations[]]
+// Empty animations[] means "full sheet" (player / hero).
+const USAGE_PRESETS = [
+  [["摆件", "静态", "装饰", "柱子", "火炬", "招牌", "箱子", "prop", "static"], "静态摆件", ["idle"]],
+  [["村民", "npc", "老板", "平民", "villager", "老人", "小孩", "路人"], "普通 NPC", ["idle", "walk"]],
+  [["商人", "商店", "黑商", "merchant", "banker", "柜员"], "商人", ["idle", "emote"]],
+  [["坐", "椅子", "王座", "throne", "sit", "赌桌", "吧台"], "坐着的角色", ["idle", "sit"]],
+  [["门卫", "守卫", "guard", "哨兵", "sentry", "士兵"], "守卫", ["idle", "walk", "hurt"]],
+  [["小怪", "杂兵", "enemy", "monster", "怪", "小兵"], "普通怪物", ["idle", "walk", "hurt", "slash"]],
+  [["远程怪", "弓手", "法师怪", "archer", "caster", "mage enemy"], "远程怪物", ["idle", "walk", "hurt", "shoot", "spellcast"]],
+  [["boss", "首领", "精英", "elite", "头目"], "BOSS", ["idle", "walk", "run", "hurt", "slash", "spellcast", "jump"]],
+  [["坐骑", "宠物", "mount", "pet", "马", "狗", "猫"], "坐骑/宠物", ["idle", "walk", "run", "hurt"]],
+  [["攀爬", "爬梯", "梯子", "climb", "藤蔓"], "攀爬角色", ["idle", "walk", "climb"]],
+  [["玩家", "主角", "player", "hero", "可操作", "pc", "完整版", "全部动作", "完整"], "玩家主角", []],
+];
+
+function detectUsagePreset(text) {
+  const t = text.toLowerCase();
+  for (const [keywords, label, animations] of USAGE_PRESETS) {
+    if (keywords.some((kw) => t.includes(kw.toLowerCase()))) {
+      return { label, animations };
+    }
+  }
+  return null;
+}
+
 /**
  * Translate one user message into a sequence of tool calls.
  * Returns a structured result: { assistantText, toolCalls }.
@@ -185,13 +212,20 @@ export function planFromKeywords(userText, toolDefs) {
     calls.push({ name: "set_animation", arguments: { animation } });
   }
 
+  // 5. Usage preset (NPC / BOSS / player / ...) → selective animation export
+  const usage = detectUsagePreset(userText);
+
   // Always end with a render so the user gets an image.
+  const renderArgs = { includeImage: true };
+  if (usage && usage.animations.length > 0) {
+    renderArgs.animations = usage.animations;
+  }
   calls.push({
     name: "render_spritesheet",
-    arguments: { includeImage: true },
+    arguments: renderArgs,
   });
 
-  const assistantText = describePlan({ role, bodyType, color, animation });
+  const assistantText = describePlan({ role, bodyType, color, animation, usage });
   return { assistantText, toolCalls: calls };
 }
 
@@ -201,6 +235,13 @@ function describePlan(p) {
   if (p.bodyType) parts.push(`身体类型：${p.bodyType}`);
   if (p.color) parts.push(`主色：${p.color}`);
   if (p.animation) parts.push(`演示动作：${p.animation}`);
+  if (p.usage) {
+    if (p.usage.animations.length > 0) {
+      parts.push(`用途：${p.usage.label}（精简导出 ${p.usage.animations.length} 个动作：${p.usage.animations.join("、")}）`);
+    } else {
+      parts.push(`用途：${p.usage.label}（完整大表）`);
+    }
+  }
   return parts.length
     ? `已为你生成角色：${parts.join("，")}。`
     : "已渲染当前角色。";

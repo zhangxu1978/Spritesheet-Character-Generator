@@ -34,6 +34,8 @@ interface State {
   fallback?: "echo";
   lastToolCount?: number;
   draft?: string;
+  /** Animations included in the last agent-produced PNG (for download dialog default). */
+  lastIncludedAnimations?: string[];
 }
 
 export const AgentApp: m.Component<Attrs, State> = {
@@ -116,6 +118,7 @@ export const AgentApp: m.Component<Attrs, State> = {
           lastPngBase64: vnode.state.lastPngBase64,
           pending: vnode.state.pending,
           toolCount: vnode.state.lastToolCount,
+          lastIncludedAnimations: vnode.state.lastIncludedAnimations,
           onDownload: (anims) => onDownload(vnode, anims),
           onAnimationChange: () => m.redraw(),
         }),
@@ -153,6 +156,15 @@ async function onSend(vnode: m.Vnode<Attrs, State>, text: string): Promise<void>
         toolCall: call,
         toolResult: result,
       });
+      // Track which animations the agent chose to include
+      if (call.name === "render_spritesheet" && result.ok && typeof result.data === "object" && result.data !== null) {
+        const d = result.data as { includedAnimations?: string[]; selective?: boolean };
+        if (d.selective && Array.isArray(d.includedAnimations) && d.includedAnimations.length > 0) {
+          vnode.state.lastIncludedAnimations = d.includedAnimations;
+        } else {
+          vnode.state.lastIncludedAnimations = undefined;
+        }
+      }
       m.redraw();
     },
     onImage: (b64) => {
