@@ -15,7 +15,7 @@ page.on("console", (msg) => {
   if (msg.type() === "error") errors.push(`console.error: ${msg.text()}`);
 });
 
-await page.goto("http://localhost:4173/agent.html", { waitUntil: "networkidle" });
+await page.goto("http://localhost:3417/agent.html", { waitUntil: "networkidle" });
 await page.waitForTimeout(500);
 await page.screenshot({ path: out, fullPage: false });
 console.log("snapshot saved:", out);

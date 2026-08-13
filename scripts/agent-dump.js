@@ -9,13 +9,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tmpDir = path.resolve(__dirname, "..", "tmp");
 await fs.mkdir(tmpDir, { recursive: true });
 
-const html = await fetch("http://localhost:4173/agent.html").then((r) => r.text());
+const html = await fetch("http://localhost:3417/agent.html").then((r) => r.text());
 await fs.writeFile(path.join(tmpDir, "agent-page.html"), html, "utf8");
 
 // Extract CSS link
 const cssMatch = html.match(/href="\.\/(assets\/agent-[^"]+\.css)"/);
 if (cssMatch) {
-  const css = await fetch(`http://localhost:4173/${cssMatch[1]}`).then((r) => r.text());
+  const css = await fetch(`http://localhost:3417/${cssMatch[1]}`).then((r) => r.text());
   await fs.writeFile(path.join(tmpDir, "agent.css"), css, "utf8");
   console.log("CSS saved:", cssMatch[1], css.length, "bytes");
 }

@@ -2,7 +2,7 @@
 // 用法: node scripts/smoke-bundle.mjs [baseUrl]
 import http from "node:http";
 
-const base = process.argv[2] ?? "http://localhost:4173";
+const base = process.argv[2] ?? "http://localhost:3417";
 
 function get(path, headers = {}) {
   return new Promise((resolve, reject) => {

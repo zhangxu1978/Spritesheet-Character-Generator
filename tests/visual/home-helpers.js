@@ -19,7 +19,7 @@ export async function scrollVisualCaptureToTop(page) {
  * Shared homepage navigation + readiness wait for visual tests and tooling scripts.
  *
  * @param {import('@playwright/test').Page} page
- * @param {string} [baseUrl] Defaults to PLAYWRIGHT_TEST_BASE_URL or http://127.0.0.1:4173
+ * @param {string} [baseUrl] Defaults to PLAYWRIGHT_TEST_BASE_URL or http://127.0.0.1:3417
  */
 /**
  * Await `catalogReady.onAllReady` when the build exposes
@@ -61,7 +61,7 @@ export async function waitForCatalogAllReady(page) {
 
 export async function gotoHomepageReady(
   page,
-  baseUrl = process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://127.0.0.1:4173",
+  baseUrl = process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://127.0.0.1:3417",
 ) {
   const normalized = `${baseUrl.replace(/\/$/, "")}/`;
   await page.goto(normalized, { waitUntil: "load" });

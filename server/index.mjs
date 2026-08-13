@@ -15,7 +15,7 @@ import { handleBundleRoute } from "./bundle-handler.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PORT = Number(process.env.PORT || 4173);
+const PORT = Number(process.env.PORT || 3417);
 const DIST = path.resolve(__dirname, "..", "dist");
 
 const MIME = {

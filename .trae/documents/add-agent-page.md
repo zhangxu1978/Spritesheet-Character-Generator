@@ -131,7 +131,7 @@ UI 与现有主站的关系：
 
 新增 `server/` 目录：
 
-* `server/index.mjs` — Express 服务，启动在 `process.env.PORT || 4173`。
+* `server/index.mjs` — Express 服务，启动在 `process.env.PORT || 3417`。
 
   * 生产时静态托管 `dist/`。
 
@@ -336,8 +336,8 @@ API 返回结构统一：
 3. **API 单独验证**（用 `curl.exe`）：
 
    ```powershell
-   curl.exe -s http://localhost:4173/api/agent/tools | Select-String "render_spritesheet"
-   curl.exe -s -X POST http://localhost:4173/api/agent/chat -H "Content-Type: application/json" -d '{\"mode\":\"echo\",\"messages\":[{\"role\":\"user\",\"content\":\"红色长发的女法师走\"}]}'
+   curl.exe -s http://localhost:3417/api/agent/tools | Select-String "render_spritesheet"
+   curl.exe -s -X POST http://localhost:3417/api/agent/chat -H "Content-Type: application/json" -d '{\"mode\":\"echo\",\"messages\":[{\"role\":\"user\",\"content\":\"红色长发的女法师走\"}]}'
    ```
 
    响应里应包含 `tool_calls` 与最终 `render_spritesheet` 的 PNG base64。默认走 MiniMax（`mode` 不传即生效）；加 `?mode=echo` 可强制本地 stub 验证。

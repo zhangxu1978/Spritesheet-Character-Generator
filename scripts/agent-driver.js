@@ -5,7 +5,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import fs from "node:fs/promises";
 
 const PORT = 9223;
-const url = "http://localhost:4173/agent.html";
+const url = "http://localhost:3417/agent.html";
 
 // Launch Chrome with remote debugging
 const chrome = spawn(

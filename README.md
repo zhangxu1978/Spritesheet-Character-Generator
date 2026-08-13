@@ -91,7 +91,7 @@ The UI is built with [Vite](https://vitejs.dev/). Use a dev server rather than o
 1. Run **`npm install`** once.
 2. Start the app with **`npm run dev`** (default **http://localhost:5173**) or **`npm run serve:open`** to open it in your default browser.
 
-For a **production-like** build locally, run **`npm run build`** then **`npm run preview`** (Vite’s default preview port is **4173**; the dev server uses **5173** by default). To use another port, pass Vite’s **`--port`** flag (for example `npm run dev -- --port 3000`).
+For a **production-like** build locally, run **`npm run build`** then **`npm run preview`** (Vite’s default preview port is **3417**; the dev server uses **5173** by default). To use another port, pass Vite’s **`--port`** flag (for example `npm run dev -- --port 3000`).
 
 Other local servers (Python `http.server`, `npx serve`, nginx, and so on) can serve the built tree for experimentation, but **`npm run dev`** is what this repository is set up for day to day.
 

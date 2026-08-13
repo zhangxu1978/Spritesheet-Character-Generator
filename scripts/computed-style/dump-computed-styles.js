@@ -4,12 +4,12 @@
  * (e.g. master vs update_bulma) served from two worktrees on different ports.
  *
  * Usage:
- *   node scripts/dump-computed-styles.js http://127.0.0.1:4173 > /tmp/master.txt
+ *   node scripts/dump-computed-styles.js http://127.0.0.1:3417 > /tmp/master.txt
  *   node scripts/dump-computed-styles.js http://127.0.0.1:4174 > /tmp/branch.txt
  *   diff -u /tmp/master.txt /tmp/branch.txt
  *
  * Or with labels and an output directory:
- *   node scripts/dump-computed-styles.js --out-dir /tmp/cmp --label master http://127.0.0.1:4173
+ *   node scripts/dump-computed-styles.js --out-dir /tmp/cmp --label master http://127.0.0.1:3417
  *   node scripts/dump-computed-styles.js --out-dir /tmp/cmp --label branch http://127.0.0.1:4174
  *
  * Options:
@@ -19,7 +19,7 @@
  *   --out-dir <dir>       Implies --label required; writes <dir>/<label>.txt
  *
  * Mobile / responsive debugging (e.g. full-width Download buttons):
- *   node scripts/dump-computed-styles.js --preset mobile http://127.0.0.1:4173 > /tmp/master-mobile.txt
+ *   node scripts/dump-computed-styles.js --preset mobile http://127.0.0.1:3417 > /tmp/master-mobile.txt
  *   node scripts/dump-computed-styles.js --preset mobile http://127.0.0.1:4174 > /tmp/branch-mobile.txt
  *   diff -u /tmp/master-mobile.txt /tmp/branch-mobile.txt
  *
@@ -100,8 +100,8 @@ Options:
   --help, -h
 
 Examples:
-  node scripts/dump-computed-styles.js http://127.0.0.1:4173 > /tmp/master.txt
-  node scripts/dump-computed-styles.js --preset mobile http://127.0.0.1:4173 > /tmp/master-mobile.txt
+  node scripts/dump-computed-styles.js http://127.0.0.1:3417 > /tmp/master.txt
+  node scripts/dump-computed-styles.js --preset mobile http://127.0.0.1:3417 > /tmp/master-mobile.txt
   node scripts/dump-computed-styles.js --out /tmp/branch.txt http://127.0.0.1:4174
   diff -u /tmp/master.txt /tmp/branch.txt
 
