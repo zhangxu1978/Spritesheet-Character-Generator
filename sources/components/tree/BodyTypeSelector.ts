@@ -27,7 +27,7 @@ export const BodyTypeSelector: m.Component<Record<string, never>, State> = {
         ],
       ),
       vnode.state.isExpanded
-        ? m("div.ml-4.mt-2", [
+        ? m("div.tree-children.mt-2", [
             m(
               "div.buttons.ml-4",
               BODY_TYPES.map((type) =>

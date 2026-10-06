@@ -14,3 +14,4 @@ computed-style-diff-output/
 /.vitest-attachments/
 .tool-versions
 config.json
+mcp-output/

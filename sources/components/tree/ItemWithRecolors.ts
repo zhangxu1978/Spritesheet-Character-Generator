@@ -126,7 +126,7 @@ export const ItemWithRecolors: m.Component<
         ),
         paletteModal,
         isExpanded && !paletteReady
-          ? m("div.ml-4.mt-2", [
+          ? m("div.tree-children.mt-2", [
               m(
                 "div.skeleton-row.skeleton-row--stacked",
                 { "aria-busy": "true" },

@@ -180,6 +180,10 @@ canvas {
   margin-top: 1rem;
 }
 
+.tree-children {
+  margin-left: 1.5rem;
+}
+
 .tree-list {
   list-style: none;
   margin-left: 0;

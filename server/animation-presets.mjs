@@ -1,0 +1,120 @@
+// animation-presets.mjs — shared animation-preset recommendation table.
+//
+// Extracted from agent-handler.mjs so both the /api/agent/* HTTP handler and
+// the MCP server (server/mcp/tools.mjs) can use the exact same presets.
+// The browser twin lives in sources/agent/tools.ts (ANIMATION_PRESETS); the
+// two are kept semantically in sync (see tests/agent/* specs).
+//
+// Pure data + pure function — no DOM, no I/O. Easy to unit test.
+
+/**
+ * Curated presets so the model doesn't have to invent a list every time.
+ * Keys are lowercased keyword fragments matched against the user's hint.
+ */
+export const ANIMATION_PRESETS = [
+  {
+    keywords: ["摆件", "静态", "装饰", "prop", "static", "柱子", "火炬", "招牌", "箱子"],
+    label: "静态摆件",
+    animations: ["idle"],
+    rationale: "没有移动，只需要一个待机帧即可；通常只占 1 行 (256px 高)。",
+  },
+  {
+    keywords: ["村民", "npc", "老板", "平民", "villager", "shop", "老人", "小孩", "路人"],
+    label: "普通 NPC / 村民",
+    animations: ["idle", "walk"],
+    rationale: "大部分时间站着说话，偶尔走动；不需要战斗相关动作。约 2 行 (512px)。",
+  },
+  {
+    keywords: ["商人", "商店", "黑商", "merchant", "banker", "柜员"],
+    label: "商人 / 柜员",
+    animations: ["idle", "emote"],
+    rationale: "站在柜台后，只需待机 + 表情/招呼。",
+  },
+  {
+    keywords: ["坐", "椅子", "王座", "throne", "sit", "赌桌", "吧台"],
+    label: "坐着的角色",
+    animations: ["idle", "sit"],
+    rationale: "有「坐下」动画的 NPC（酒馆、王座、赌场）。",
+  },
+  {
+    keywords: ["门卫", "守卫", "guard", "哨兵", "sentry", "士兵"],
+    label: "守卫 / 哨兵",
+    animations: ["idle", "walk", "hurt"],
+    rationale: "巡逻 + 受击；无需挥砍/射击（除非剧情需要）。",
+  },
+  {
+    keywords: ["小怪", "杂兵", "enemy", "monster", "怪", "小兵"],
+    label: "普通怪物 / 杂兵",
+    animations: ["idle", "walk", "hurt", "slash"],
+    rationale: "需要追击 + 挨打 + 近战攻击；远程再补上 shoot。",
+  },
+  {
+    keywords: ["远程怪", "弓手", "法师怪", "archer", "caster", "mage enemy"],
+    label: "远程怪物",
+    animations: ["idle", "walk", "hurt", "shoot", "spellcast"],
+    rationale: "附带射击或施法动作。",
+  },
+  {
+    keywords: ["boss", "首领", "精英", "elite", "头目"],
+    label: "BOSS / 精英怪",
+    animations: ["idle", "walk", "run", "hurt", "slash", "spellcast", "jump"],
+    rationale: "动作越丰富越好；需要时再加 thrust / shoot 等。",
+  },
+  {
+    keywords: ["玩家", "主角", "player", "hero", "可操作", "pc"],
+    label: "玩家 / 主角（完整版）",
+    animations: [
+      "spellcast", "thrust", "walk", "slash", "shoot", "hurt",
+      "climb", "idle", "jump", "sit", "emote", "run",
+    ],
+    rationale: "所有常用动作全部打包。",
+  },
+  {
+    keywords: ["坐骑", "宠物", "mount", "pet", "马", "狗", "猫"],
+    label: "坐骑 / 宠物",
+    animations: ["idle", "walk", "run", "hurt"],
+    rationale: "跑走 + 受击即可；复杂的再加 jump / emote。",
+  },
+  {
+    keywords: ["攀爬", "爬梯", "梯子", "climb", "rope", "藤蔓"],
+    label: "需要攀爬的场景角色",
+    animations: ["idle", "walk", "climb"],
+    rationale: "带攀爬专用动画。",
+  },
+];
+
+/** Every animation the exporter accepts (mirrors server/spritesheet-meta.mjs). */
+export const FULL_SHEET_ANIMATIONS = [
+  "spellcast", "thrust", "walk", "slash", "shoot", "hurt", "climb",
+  "idle", "jump", "sit", "emote", "run", "combat",
+  "1h_backslash", "1h_halfslash",
+];
+
+/**
+ * Keyword-match a role description and return the recommendation payload.
+ * Pure — the caller decides how to wrap it ({ok,data} for HTTP tools, plain
+ * content blocks for MCP).
+ *
+ * @param {string|undefined} role
+ */
+export function suggestAnimationPresetData(role) {
+  const raw = ((role ?? "") + "").toLowerCase();
+  if (!raw.trim()) {
+    return {
+      hint: "请先告诉我这个角色的用途",
+      presets: ANIMATION_PRESETS.map((p) => ({ label: p.label, animations: p.animations })),
+    };
+  }
+  const matches = ANIMATION_PRESETS.filter((p) =>
+    p.keywords.some((kw) => raw.includes((kw + "").toLowerCase())),
+  );
+  let best = matches[0] ?? ANIMATION_PRESETS[1]; // villager fallback
+  return {
+    matchedRole: role,
+    recommended: { label: best.label, animations: best.animations, rationale: best.rationale },
+    alternatives: matches
+      .filter((m) => m.label !== best.label)
+      .map((m) => ({ label: m.label, animations: m.animations, rationale: m.rationale })),
+    fullSheetAnimations: FULL_SHEET_ANIMATIONS.slice(),
+  };
+}

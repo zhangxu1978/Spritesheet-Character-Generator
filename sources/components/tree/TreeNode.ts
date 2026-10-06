@@ -252,7 +252,7 @@ export const TreeNode: m.Component<TreeNodeAttrs> = {
         ],
       ),
       isExpanded
-        ? m("div.ml-4", [
+        ? m("div.tree-children", [
             // Render child categories
             Object.entries(node.children ?? {}).map(([childName, childNode]) =>
               m(TreeNode, {
