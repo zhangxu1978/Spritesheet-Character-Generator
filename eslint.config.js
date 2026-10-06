@@ -81,6 +81,17 @@ export default [
     rules: commonRules,
   },
   {
+    // .mjs never matches the **/*.js block above — give ESM server/scripts
+    // files the Node globals they use (no rule changes, globals only).
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2021,
+      },
+    },
+  },
+  {
     files: ["sources/**/*.js"],
     languageOptions: {
       parserOptions: {

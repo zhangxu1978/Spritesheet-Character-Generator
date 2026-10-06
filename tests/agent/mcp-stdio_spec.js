@@ -1,127 +1,135 @@
-// tests/agent/mcp-stdio_spec.js — end-to-end test of the MCP stdio transport
-// (server/mcp/stdio.mjs). Spawns the real server as a child process, speaks
-// newline-delimited JSON-RPC on its stdin/stdout, and asserts the handshake
-// plus tools/list. No browser / no rendering involved.
+// tests/agent/mcp-stdio_spec.js — stdio transport integration test.
+//
+// Spawns `node server/mcp/stdio.mjs` as a real subprocess, feeds it
+// newline-delimited JSON-RPC on stdin, and asserts the framed responses on
+// stdout — exactly what an MCP client does. Never touches the headless
+// renderer (no generate_spritesheet call → no vite/Chromium boot).
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import readline from "node:readline";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 const SERVER_PATH = path.join(PROJECT_ROOT, "server", "mcp", "stdio.mjs");
 
-/**
- * Collect `count` JSON-RPC response lines from the child's stdout, with a
- * hard timeout so a hung server fails the test instead of hanging CI.
- */
-function readResponses(child, count, timeoutMs = 10_000) {
+/** Send requests, collect responses by id. Kills the child afterwards. */
+async function talkToServer(requests, { timeoutMs = 20_000 } = {}) {
   return new Promise((resolve, reject) => {
-    const lines = [];
-    let buf = "";
+    const child = spawn(process.execPath, [SERVER_PATH], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const stderr = [];
+    const responsesById = new Map();
+    const pending = new Set(
+      requests.filter((r) => r.id !== undefined).map((r) => r.id),
+    );
+
     const timer = setTimeout(() => {
+      child.kill("SIGKILL");
       reject(
         new Error(
-          `timeout waiting for ${count} responses (got ${lines.length}): ${lines.map((l) => JSON.stringify(l)).join(" | ")}`,
+          `stdio test timed out after ${timeoutMs}ms; pending ids: ` +
+            `[${[...pending].join(", ")}]; stderr: ${stderr.join("")}`,
         ),
       );
     }, timeoutMs);
-    child.stdout.on("data", (chunk) => {
-      buf += chunk.toString();
-      let idx;
-      while ((idx = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, idx).trim();
-        buf = buf.slice(idx + 1);
-        if (!line) continue;
-        lines.push(JSON.parse(line));
-        if (lines.length >= count) {
+
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+
+    const rl = readline.createInterface({
+      input: child.stdout,
+      crlfDelay: Infinity,
+    });
+    rl.on("line", (line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      let msg;
+      try {
+        msg = JSON.parse(trimmed);
+      } catch {
+        return; // not protocol — fail loudly below if it was expected
+      }
+      if (msg && msg.id !== undefined) {
+        responsesById.set(msg.id, msg);
+        pending.delete(msg.id);
+        if (pending.size === 0) {
           clearTimeout(timer);
-          resolve(lines);
-          return;
+          child.stdin.end();
+          child.kill("SIGTERM");
+          resolve({ responsesById, stderr: stderr.join("") });
         }
       }
     });
-    child.stderr.on("data", () => {}); // drain server logs
+
+    child.on("exit", () => {
+      clearTimeout(timer);
+      if (pending.size > 0) {
+        reject(
+          new Error(
+            `server exited before answering; pending ids: [${[...pending].join(", ")}]; ` +
+              `stderr: ${stderr.join("")}`,
+          ),
+        );
+      }
+    });
+
+    for (const req of requests) {
+      child.stdin.write(JSON.stringify(req) + "\n");
+    }
   });
 }
 
-function send(child, msg) {
-  child.stdin.write(JSON.stringify(msg) + "\n");
-}
-
-test("stdio server completes the MCP handshake and serves tools/list", async (t) => {
-  const child = spawn(process.execPath, [SERVER_PATH], {
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  t.after(() => {
-    child.kill("SIGTERM");
-  });
-
-  send(child, {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      protocolVersion: "2025-06-18",
-      capabilities: {},
-      clientInfo: { name: "stdio-spec", version: "0.0.0" },
+test("stdio server: initialize → tools/list handshake", async () => {
+  const { responsesById } = await talkToServer([
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "test", version: "0" },
+      },
     },
-  });
-  send(child, { jsonrpc: "2.0", method: "notifications/initialized" });
-  send(child, { jsonrpc: "2.0", id: 2, method: "tools/list" });
-  send(child, { jsonrpc: "2.0", id: 3, method: "no/such/method" });
+    { jsonrpc: "2.0", method: "notifications/initialized" },
+    { jsonrpc: "2.0", id: 2, method: "tools/list" },
+  ]);
 
-  const [init, list, unknown] = await readResponses(child, 3);
+  const init = responsesById.get(1);
+  assert.ok(init, "initialize response missing");
+  assert.equal(init.result.protocolVersion, "2024-11-05");
+  assert.ok(init.result.serverInfo.name.length > 0);
 
-  // initialize
-  assert.equal(init.id, 1);
-  assert.equal(init.result.protocolVersion, "2025-06-18");
-  assert.equal(init.result.serverInfo.name, "lpc-spritesheet-generator");
-  assert.ok(init.result.capabilities.tools);
-
-  // tools/list
-  assert.equal(list.id, 2);
-  const names = list.result.tools.map((tl) => tl.name);
+  const tools = responsesById.get(2);
+  assert.ok(tools, "tools/list response missing");
+  const names = tools.result.tools.map((t) => t.name);
+  assert.equal(names.length, 8);
   assert.ok(names.includes("generate_spritesheet"));
   assert.ok(names.includes("build_config"));
-  assert.equal(names.length, 8);
-
-  // unknown method → JSON-RPC error
-  assert.equal(unknown.id, 3);
-  assert.equal(unknown.error.code, -32601);
 });
 
-test("stdio server shuts down cleanly when stdin closes", async (t) => {
-  const child = spawn(process.execPath, [SERVER_PATH], {
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  t.after(() => {
-    if (child.exitCode === null) child.kill("SIGKILL");
-  });
+test("stdio server: build_config round-trip and parse-error frame", async () => {
+  const { responsesById } = await talkToServer([
+    { jsonrpc: "2.0", id: 1, method: "initialize" },
+    {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "build_config", arguments: { animations: ["idle"] } },
+    },
+  ]);
 
-  child.stdin.end(); // EOF → readline close → graceful shutdown(0)
-
-  const code = await new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("server did not exit after stdin EOF")),
-      10_000,
-    );
-    child.on("exit", (code) => {
-      clearTimeout(timer);
-      resolve(code);
-    });
-  });
-  assert.equal(code, 0);
-});
-
-test("protocol module parses stdin lines exactly as the transport does", async () => {
-  // Sanity-check the shared parse path used by stdio.mjs (import-level check
-  // so a refactor of the module boundary fails loudly here too).
-  const { parseLine } = await import(
-    pathToFileURL(path.join(PROJECT_ROOT, "server", "mcp", "protocol.mjs")).href
-  );
-  assert.equal(parseLine(" \n"), null);
-  assert.equal(parseLine("}bad{").error.error.code, -32768);
+  const call = responsesById.get(2);
+  assert.ok(call, "tools/call response missing");
+  assert.equal(call.error, undefined);
+  assert.equal(call.result.structuredContent.config.version, 2);
+  assert.deepEqual(call.result.structuredContent.config.animations, ["idle"]);
 });

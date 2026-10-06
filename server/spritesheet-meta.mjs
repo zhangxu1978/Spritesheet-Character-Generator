@@ -208,3 +208,8 @@ export function makePngFilename(tag, ts = Date.now()) {
 export function makeMetaFilename(pngFilename) {
   return pngFilename.replace(/\.png$/i, ".json");
 }
+
+/** Exportable animations as {value,label} — server-side whitelist source. */
+export function listExportableAnimations() {
+  return ANIMATIONS.filter(isExportable).map(({ value, label }) => ({ value, label }));
+}

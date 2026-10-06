@@ -1,73 +1,115 @@
-// mcp/stdio.mjs — MCP stdio transport entry point.
+#!/usr/bin/env node
+// stdio.mjs — MCP server entry point (stdio transport).
 //
-// Registers as an MCP server in any local MCP client (Trae / Claude Desktop /
-// Cursor / Cline / …):
+// Speaks newline-delimited JSON-RPC 2.0 on stdin/stdout per the MCP spec.
+// Register with any MCP client:
 //
 //   { "mcpServers": { "lpc-spritesheet": {
 //       "command": "node",
 //       "args": ["<repo>/server/mcp/stdio.mjs"] } } }
 //
-// Protocol: newline-delimited JSON-RPC 2.0 (see protocol.mjs). All logging
-// goes to stderr — stdout is reserved for protocol messages only.
+// Rules of the house:
+//   - stdout is the PROTOCOL channel. All logs (and vite child output) go to
+//     stderr — see server/mcp-renderer.mjs.
+//   - stdin end / SIGINT / SIGTERM trigger renderer shutdown (browser + vite
+//     child process) before exiting.
 
-import { createInterface } from "node:readline";
-import { createMcpState, handleMessage, parseLine } from "./protocol.mjs";
-import { MCP_TOOLS, callTool } from "./tools.mjs";
+import readline from "node:readline";
+import {
+  createProtocolState,
+  handleMessage,
+  parseErrorResponse,
+} from "./protocol.mjs";
+import { MCP_TOOLS, createToolContext, callTool } from "./tools.mjs";
+import {
+  renderSpritesheet,
+  shutdownRenderer,
+} from "../mcp-renderer.mjs";
+
+const SERVER_INFO = {
+  name: "lpc-spritesheet",
+  title: "LPC Spritesheet Character Generator",
+  version: "0.1.0",
+};
+
+const state = createProtocolState({
+  serverInfo: SERVER_INFO,
+  tools: MCP_TOOLS,
+  callTool: (name, args) => callTool(name, args, createToolContext({ renderer: { render: renderSpritesheet } })),
+});
+
+function writeResponse(obj) {
+  process.stdout.write(JSON.stringify(obj) + "\n");
+}
 
 function log(...args) {
   console.error("[mcp]", ...args);
 }
 
-function writeMessage(msg) {
-  process.stdout.write(JSON.stringify(msg) + "\n");
-}
-
 let shuttingDown = false;
-
 async function shutdown(code) {
   if (shuttingDown) return;
   shuttingDown = true;
+  log("shutting down …");
   try {
-    const { shutdownRenderer } = await import("../mcp-renderer.mjs");
     await shutdownRenderer();
   } catch {
-    // best-effort cleanup
+    /* ignore */
   }
   process.exit(code);
 }
 
-async function main() {
-  const state = createMcpState({ tools: MCP_TOOLS, callTool });
-
-  const rl = createInterface({ input: process.stdin, terminal: false });
-  rl.on("line", (line) => {
-    void (async () => {
-      const parsed = parseLine(line);
-      if (!parsed) return; // blank line
-      if (parsed.error) {
-        writeMessage(parsed.error);
-        return;
-      }
-      try {
-        const resp = await handleMessage(state, parsed.message);
-        if (resp !== null) writeMessage(resp);
-      } catch (e) {
-        // handleMessage is designed not to throw; defensive only.
-        log("handler error:", e instanceof Error ? e.stack : String(e));
-      }
-    })();
-  });
-  rl.on("close", () => void shutdown(0));
-
-  process.on("SIGINT", () => void shutdown(0));
-  process.on("SIGTERM", () => void shutdown(0));
-
-  log(
-    `MCP server ready: ${MCP_TOOLS.length} tools (${MCP_TOOLS.map((t) => t.name).join(", ")})`,
-  );
-}
-
-main().catch((e) => {
-  log("fatal:", e instanceof Error ? e.stack : String(e));
-  process.exit(1);
+const rl = readline.createInterface({
+  input: process.stdin,
+  crlfDelay: Infinity,
 });
+
+rl.on("line", (line) => {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+
+  let msg;
+  try {
+    msg = JSON.parse(trimmed);
+  } catch {
+    writeResponse(parseErrorResponse());
+    return;
+  }
+
+  Promise.resolve(handleMessage(state, msg))
+    .then((response) => {
+      if (response !== null) writeResponse(response);
+    })
+    .catch((e) => {
+      // handleMessage is written not to throw, but never let a bug kill the
+      // server silently — emit a JSON-RPC internal error for the request id
+      // if we can find one.
+      log("handler crash:", e instanceof Error ? e.stack : String(e));
+      const id = Array.isArray(msg)
+        ? (msg.find((m) => m && typeof m.id !== "undefined")?.id ?? null)
+        : (msg?.id ?? null);
+      writeResponse({
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32603, message: "Internal error" },
+      });
+    });
+});
+
+// MCP clients signal shutdown by closing stdin.
+rl.on("close", () => {
+  void shutdown(0);
+});
+
+process.on("SIGINT", () => {
+  void shutdown(130);
+});
+process.on("SIGTERM", () => {
+  void shutdown(143);
+});
+process.on("exit", () => {
+  // Synchronous best-effort: kill vite / browser without awaiting.
+  shutdownRenderer();
+});
+
+log(`MCP server "${SERVER_INFO.name}" listening on stdio (${MCP_TOOLS.length} tools)`);
