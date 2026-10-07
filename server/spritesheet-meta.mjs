@@ -10,6 +10,16 @@
 //     here lets us avoid adding a TS loader to the test runner.
 //   - The duplication is small (~80 lines) and the assertions in
 //     spritesheet-meta_spec.js guard against drift.
+//
+// Custom animations (tool_axe, slash_oversize, …): items like the axe render
+// into a dedicated area appended BELOW the standard 832x3456 sheet with a
+// larger frame size (128/192px). Pass `customAnimations: [{ name, frameSize,
+// frameCount, yOffset }]` (as reported by the renderer) to describe those
+// areas; each becomes a per-animation entry with its own frameWidth /
+// frameHeight / yOffset and expanded frames. Selective exports re-pack rows
+// in request order, mixing standard 64px blocks and custom blocks.
+
+import { CUSTOM_ANIMATIONS } from "./custom-animations.mjs";
 
 const FRAME_SIZE = 64;
 const STANDARD_ANIMATION_FRAMES_PER_ROW = 13;
@@ -104,14 +114,26 @@ function directionsFor(name) {
 export function buildSpritesheetMeta(opts) {
   const now = opts.now ?? new Date();
   const allExportable = ANIMATIONS.filter(isExportable);
+  const customLayout = Array.isArray(opts.customAnimations)
+    ? opts.customAnimations.filter((c) => c && CUSTOM_ANIMATIONS[c.name])
+    : [];
+  const customByName = new Map(customLayout.map((c) => [c.name, c]));
+  const isSelective =
+    opts.includedAnimations && opts.includedAnimations.length > 0;
 
   let chosen;
   let includedOrder;
-  if (opts.includedAnimations && opts.includedAnimations.length > 0) {
+  if (isSelective) {
     const seen = new Set();
     const ordered = [];
     for (const name of opts.includedAnimations) {
       if (seen.has(name)) continue;
+      if (customByName.has(name)) {
+        const c = customByName.get(name);
+        seen.add(name);
+        ordered.push({ value: name, label: CUSTOM_ANIMATIONS[name].label, custom: c });
+        continue;
+      }
       const meta = allExportable.find((a) => a.value === name);
       if (!meta) continue;
       seen.add(name);
@@ -130,18 +152,64 @@ export function buildSpritesheetMeta(opts) {
   }
 
   const animations = {};
-  let runningRow = 0;
-  let sheetRows = 0;
+  let runningY = 0; // selective exports pack blocks contiguously (pixels)
+  let sheetRowsPx = 0;
+
+  /** Build a meta entry for one custom-animation area. */
+  function buildCustomEntry(name, frameSize, frameCount, yOffset) {
+    const cycle = Array.from({ length: frameCount }, (_, i) => i);
+    const frames = [];
+    for (let dirIdx = 0; dirIdx < 4; dirIdx++) {
+      const directionLabel = DIRECTIONS[dirIdx] ?? "single";
+      for (let cycleIdx = 0; cycleIdx < frameCount; cycleIdx++) {
+        frames.push({
+          direction: dirIdx,
+          directionLabel,
+          cycleIndex: cycleIdx,
+          frameNumber: cycleIdx,
+          x: cycleIdx * frameSize,
+          y: yOffset + dirIdx * frameSize,
+          width: frameSize,
+          height: frameSize,
+        });
+      }
+    }
+    animations[name] = {
+      name,
+      label: CUSTOM_ANIMATIONS[name].label,
+      custom: true,
+      // `row` stays in standard 64px-row units for compatibility; frames[]
+      // x/y/width/height are the authoritative pixel rects.
+      row: yOffset / FRAME_SIZE,
+      rows: 4,
+      directions: 4,
+      columns: frameCount,
+      cycle,
+      frameWidth: frameSize,
+      frameHeight: frameSize,
+      yOffset,
+      frames,
+    };
+  }
 
   for (const meta of chosen) {
+    if (meta.custom) {
+      const { name, frameSize, frameCount } = meta.custom;
+      // Full sheet: trust the renderer-reported absolute offset. Selective:
+      // re-pack in request order.
+      const yOffset = isSelective ? runningY : (meta.custom.yOffset ?? runningY);
+      buildCustomEntry(name, frameSize, frameCount, yOffset);
+      runningY += 4 * frameSize;
+      sheetRowsPx += 4 * frameSize;
+      continue;
+    }
+
     const cycle = cycleFor(meta.value);
     if (!cycle) continue;
     const directions = directionsFor(meta.value);
     const fullSheetRow =
-      (ANIMATION_OFFSETS[meta.value] ?? runningRow * FRAME_SIZE) / FRAME_SIZE;
-    const isSelective =
-      opts.includedAnimations && opts.includedAnimations.length > 0;
-    const row = isSelective ? runningRow : fullSheetRow;
+      (ANIMATION_OFFSETS[meta.value] ?? runningY) / FRAME_SIZE;
+    const row = isSelective ? runningY / FRAME_SIZE : fullSheetRow;
 
     const frames = [];
     for (let dirIdx = 0; dirIdx < directions; dirIdx++) {
@@ -174,13 +242,21 @@ export function buildSpritesheetMeta(opts) {
       frames,
     };
 
-    runningRow += directions;
-    sheetRows += directions;
+    runningY += directions * FRAME_SIZE;
+    sheetRowsPx += directions * FRAME_SIZE;
   }
 
-  const isSelective =
-    opts.includedAnimations && opts.includedAnimations.length > 0;
-  const sheetHeight = isSelective ? sheetRows * FRAME_SIZE : opts.sheetHeight;
+  // Custom animations always live below the standard rows; in full-sheet
+  // mode append them (ordered by their absolute offset) after the standard
+  // set so the JSON mirrors the PNG top-to-bottom.
+  if (!isSelective) {
+    for (const c of customLayout.slice().sort((a, b) => (a.yOffset ?? 0) - (b.yOffset ?? 0))) {
+      if (animations[c.name]) continue;
+      buildCustomEntry(c.name, c.frameSize, c.frameCount, c.yOffset ?? runningY);
+    }
+  }
+
+  const sheetHeight = isSelective ? sheetRowsPx : opts.sheetHeight;
 
   return {
     pngFilename: opts.pngFilename,

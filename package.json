@@ -35,7 +35,7 @@
     "diff:zip-profile": "node scripts/zip/diff-zip-profile.js",
     "start": "node server/index.mjs",
     "mcp": "node server/mcp/stdio.mjs",
-    "agent:test": "node --test tests/agent/tools_spec.js tests/agent/agent-handler_spec.js tests/agent/spritesheet-meta_spec.js tests/agent/mcp-protocol_spec.js tests/agent/mcp-stdio_spec.js",
+    "agent:test": "node --test tests/agent/tools_spec.js tests/agent/agent-handler_spec.js tests/agent/spritesheet-meta_spec.js tests/agent/custom-animations_spec.js tests/agent/mcp-protocol_spec.js tests/agent/mcp-stdio_spec.js",
     "compute-style-dump": "node scripts/computed-style/dump-computed-styles.js",
     "compute-style-dump:mobile": "node scripts/computed-style/dump-computed-styles.js --preset mobile",
     "compute-style-diff-all": "node scripts/computed-style/computed-style-diff-all.js",

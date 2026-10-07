@@ -417,3 +417,183 @@ test("generate_spritesheet invalid config → isError", async () => {
   );
   assert.equal(result.isError, true);
 });
+
+// ─── Weapon/tool → animation relationship (custom animations) ─────────────
+
+test("list_animations marks custom animations and lists the items that declare them", async () => {
+  const ctx = makeToolContext();
+  const anims = await callTool("list_animations", {}, ctx);
+  const list = JSON.parse(anims.content[0].text);
+
+  const standard = list.filter((a) => !a.custom);
+  const custom = list.filter((a) => a.custom);
+  assert.ok(standard.length >= 15);
+  assert.ok(custom.length >= 10);
+
+  const axe = custom.find((a) => a.value === "tool_axe");
+  assert.ok(axe, "tool_axe listed");
+  assert.equal(axe.frameSize, 128);
+  assert.equal(axe.baseAnimation, "slash");
+  assert.ok(Array.isArray(axe.usedBy));
+  assert.ok(axe.usedBy.includes("tool_axe"), "the axe item declares tool_axe");
+  assert.ok(
+    axe.usedBy.includes("tool_pickaxe"),
+    "the pickaxe shares the tool_axe animation",
+  );
+});
+
+test("get_item exposes animationGuide for items with custom animations", async () => {
+  const ctx = makeToolContext();
+
+  const got = await callTool("get_item", { itemId: "tool_axe" }, ctx);
+  const axe = JSON.parse(got.content[0].text);
+  assert.ok(Array.isArray(axe.animations));
+  assert.ok(axe.animations.includes("tool_axe"));
+  assert.ok(axe.animationGuide, "axe has an animationGuide");
+  assert.deepEqual(
+    axe.animationGuide.customAnimations.map((c) => c.name),
+    ["tool_axe"],
+  );
+  assert.ok(
+    axe.animationGuide.standardAnimations.includes("walk"),
+    "walk stays a standard animation",
+  );
+  assert.match(axe.animationGuide.tip, /animations 参数/);
+
+  // Items without custom animations (dagger) have no guide.
+  const dag = await callTool(
+    "get_item",
+    { itemId: "weapon_sword_dagger" },
+    ctx,
+  );
+  const dagger = JSON.parse(dag.content[0].text);
+  assert.ok(dagger.animations.includes("slash"));
+  assert.equal(dagger.animationGuide, undefined);
+});
+
+test("validateConfig accepts custom animations declared by the selected items", () => {
+  const ok = validateConfig({
+    selections: { weapon: { itemId: "tool_axe" } },
+    animations: ["walk", "tool_axe"],
+  });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.declaredCustomAnimations, ["tool_axe"]);
+  assert.deepEqual(ok.warnings, []);
+
+  // Still rejects genuinely unknown animations.
+  const bad = validateConfig({ animations: ["flap_wings"] });
+  assert.equal(bad.ok, false);
+  assert.match(bad.message, /未知动作/);
+});
+
+test("validateConfig warns (instead of failing) for undeclared custom animations", () => {
+  const v = validateConfig({ animations: ["idle", "tool_axe"] });
+  assert.equal(v.ok, true);
+  assert.deepEqual(v.declaredCustomAnimations, []);
+  assert.equal(v.warnings.length, 1);
+  assert.match(v.warnings[0], /tool_axe/);
+});
+
+test("validateConfig: a hat stored under a 'head' group key does not suppress the human head", () => {
+  // Regression: group keys are arbitrary labels; the default-trio completion
+  // must key its "slot already equipped" check off the item's typeName, not
+  // the group name — otherwise a helmet keyed "head" silently removed the
+  // head from the rendered soldier.
+  const v = validateConfig({
+    selections: { head: { itemId: "hat_helmet_legion" } },
+  });
+  assert.equal(v.ok, true);
+  const ids = Object.values(v.config.selections).map((s) => s.itemId);
+  assert.ok(ids.includes("hat_helmet_legion"), "helmet kept");
+  assert.ok(
+    ids.some((id) => id.startsWith("heads_human_")),
+    "human head still auto-completed",
+  );
+  assert.ok(ids.includes("body"), "body auto-completed");
+  assert.ok(ids.includes("face_neutral"), "face auto-completed");
+
+  // A real head item still suppresses the default head.
+  const withHead = validateConfig({
+    selections: { head: { itemId: "heads_human_male" } },
+  });
+  assert.equal(withHead.ok, true);
+  const headIds = Object.values(withHead.config.selections)
+    .map((s) => s.itemId)
+    .filter((id) => id.startsWith("heads_human_"));
+  assert.equal(headIds.length, 1);
+});
+
+test("generate_spritesheet exports tool_axe and describes its 128px frames", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-custom-anim-"));
+  try {
+    const ctx = createToolContext({
+      renderer: {
+        async render(config) {
+          return {
+            base64: FAKE_PNG_BASE64,
+            width: 1280,
+            height: 3456 + 512,
+            fullWidth: 1280,
+            fullHeight: 3456 + 512,
+            includedAnimations: config.animations ?? [],
+            customAnimations: [
+              {
+                name: "tool_axe",
+                frameSize: 128,
+                frameCount: 10,
+                yOffset: 3456,
+              },
+            ],
+          };
+        },
+      },
+    });
+    const result = await callTool(
+      "generate_spritesheet",
+      {
+        selections: { weapon: { itemId: "tool_axe" } },
+        animations: ["walk", "tool_axe"],
+        includeImage: false,
+        outputDir: tmp,
+      },
+      ctx,
+    );
+    assert.equal(result.isError, undefined);
+
+    const summary = JSON.parse(
+      result.content.find((c) => c.type === "text").text,
+    );
+    assert.deepEqual(summary.png.includedAnimations, ["walk", "tool_axe"]);
+    assert.equal(
+      summary.animationHints.declaredCustomAnimations[0],
+      "tool_axe",
+    );
+
+    const meta = JSON.parse(fs.readFileSync(summary.files.meta, "utf8"));
+    const axe = meta.animations.tool_axe;
+    assert.ok(axe, "tool_axe described in meta");
+    assert.equal(axe.custom, true);
+    assert.equal(axe.frameWidth, 128);
+    assert.equal(axe.yOffset, 256); // selective packing: after walk's 4×64
+    assert.equal(axe.frames[0].y, 256);
+    assert.equal(axe.frames[0].width, 128);
+    // walk block stays 64px.
+    assert.equal(meta.animations.walk.frames[0].y, 0);
+    assert.equal(meta.sheetWidth, 1280);
+    assert.equal(meta.sheetHeight, 4 * 64 + 4 * 128);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("suggest_animation_preset includes the weapon animation note", async () => {
+  const ctx = makeToolContext();
+  const preset = await callTool(
+    "suggest_animation_preset",
+    { role: "村民" },
+    ctx,
+  );
+  const data = JSON.parse(preset.content[0].text);
+  assert.match(data.weaponAnimationNote, /tool_axe/);
+  assert.match(data.weaponAnimationNote, /get_item/);
+});

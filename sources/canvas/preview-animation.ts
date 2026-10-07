@@ -228,3 +228,8 @@ export function setCustomAnimYPositions(
 ): void {
   customAnimYPositions = yPositions;
 }
+
+/** Y offsets (px) of the custom-animation areas in the current render. */
+export function getCustomAnimYPositions(): Record<string, number> {
+  return customAnimYPositions;
+}

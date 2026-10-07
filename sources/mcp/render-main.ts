@@ -20,15 +20,25 @@
 
 import { AgentSession, type SessionOptions } from "../agent/session.ts";
 import type { Selections } from "../state/state.ts";
-import { defaultCatalog } from "../state/catalog.ts";
-import { fixMissingRecolor, parseRecolorKey } from "../state/palettes.ts";
+import { normalizeSelectionRecolors } from "../state/selection-normalize.ts";
 import { loadAllMetadata } from "../install-item-metadata.ts";
+import {
+  getCustomAnimations,
+  getCustomAnimYPositions,
+} from "../canvas/preview-animation.ts";
 
 interface McpRenderConfig {
   selections?: Selections;
   bodyType?: string;
   animation?: string;
   animations?: string[];
+}
+
+interface McpCustomAnimationLayout {
+  name: string;
+  frameSize: number;
+  frameCount: number;
+  yOffset: number;
 }
 
 interface McpRenderOk {
@@ -39,6 +49,8 @@ interface McpRenderOk {
   fullWidth: number;
   fullHeight: number;
   includedAnimations: string[];
+  /** Custom-animation areas present in the full canvas (tool_axe, …). */
+  customAnimations: McpCustomAnimationLayout[];
   normalizedSelections: Selections;
 }
 
@@ -57,43 +69,6 @@ declare global {
 }
 
 const status = document.getElementById("mcp-render-status");
-
-/**
- * Fill in default palette colors for recolor-capable selections submitted
- * without one (see file header). Mirrors what the Web UI's tree click does:
- * the stored key is a compiled palette key ("light", "ulpc.light", …) that
- * fixMissingRecolor accepts.
- */
-export function normalizeSelectionRecolors(selections: Selections): Selections {
-  const out: Selections = JSON.parse(JSON.stringify(selections));
-  for (const selection of Object.values(out)) {
-    if (selection.recolor || selection.variant) continue;
-    const lite = defaultCatalog.getItemLite(selection.itemId).unwrapOr(null);
-    if (!lite || lite.recolors.length === 0) continue;
-
-    for (const palette of lite.recolors) {
-      const [, version, baseColor] = parseRecolorKey(null, palette);
-      const candidates = [
-        baseColor,
-        baseColor && version ? `${version}.${baseColor}` : undefined,
-        ...(palette.variants ?? []),
-      ].filter((c): c is string => Boolean(c));
-      for (const candidate of candidates) {
-        const verified = fixMissingRecolor(
-          selection.itemId,
-          candidate,
-          selection.subId ? (palette.type_name ?? null) : null,
-        ).unwrapOr(null);
-        if (verified) {
-          selection.recolor = verified;
-          break;
-        }
-      }
-      if (selection.recolor) break;
-    }
-  }
-  return out;
-}
 
 window.__MCP_RENDER__ = async (config) => {
   try {
@@ -131,6 +106,19 @@ window.__MCP_RENDER__ = async (config) => {
     const renderedSelections = session.getSelections();
     const normalizedSelections =
       Object.keys(normalized).length > 0 ? normalized : renderedSelections;
+    // Custom-animation areas (tool_axe, …) appended below the standard sheet.
+    const renderedCustomAnims = getCustomAnimations();
+    const customYPositions = getCustomAnimYPositions();
+    const customAnimations: McpCustomAnimationLayout[] = Object.entries(
+      renderedCustomAnims,
+    )
+      .map(([name, def]) => ({
+        name,
+        frameSize: def.frameSize,
+        frameCount: def.frames[0].length,
+        yOffset: customYPositions[name] ?? 0,
+      }))
+      .sort((a, b) => a.yOffset - b.yOffset);
     return {
       ok: true,
       base64: result.value.base64,
@@ -139,6 +127,7 @@ window.__MCP_RENDER__ = async (config) => {
       fullWidth: full?.width ?? result.value.width,
       fullHeight: full?.height ?? result.value.height,
       includedAnimations: result.value.includedAnimations,
+      customAnimations,
       normalizedSelections,
     };
   } catch (e) {

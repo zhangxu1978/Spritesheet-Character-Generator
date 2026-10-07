@@ -22,6 +22,7 @@ import { customAnimations, customAnimationBase } from "../custom-animations.ts";
 import {
   setCurrentCustomAnimations,
   setCustomAnimYPositions,
+  getCustomAnimYPositions,
 } from "./preview-animation.ts";
 import { getSortedLayersByAnim } from "../state/meta.ts";
 import type { AnimationLayer } from "../state/meta.ts";
@@ -641,14 +642,32 @@ export function extractAnimationFromCanvas(
 
 /**
  * Extract multiple specified animations from a source canvas and
- * pack them into a single compact canvas (one animation per row,
- * preserving the original row layout). If animations is empty or
- * undefined, returns a copy of the full sheet.
+ * pack them into a single compact canvas (one animation block per
+ * requested animation, preserving the original row layout). If animations
+ * is empty or undefined, returns a copy of the full sheet.
+ *
+ * Custom animations (tool_axe, slash_oversize, …) are supported when the
+ * current render actually contains their area: their block is
+ * `frameCount × frameSize` wide and 4 × frameSize tall.
  */
 export function extractSelectedAnimations(
   animations: string[],
   srcCanvas: HTMLCanvasElement | null = canvas,
 ): HTMLCanvasElement | null {
+  return (
+    extractSelectedAnimationsDetailed(animations, srcCanvas)?.canvas ?? null
+  );
+}
+
+/**
+ * Same as `extractSelectedAnimations`, but also reports which requested
+ * animations were actually packed (unknown standard names and custom
+ * animations without a rendered area are skipped silently).
+ */
+export function extractSelectedAnimationsDetailed(
+  animations: string[],
+  srcCanvas: HTMLCanvasElement | null = canvas,
+): { canvas: HTMLCanvasElement; included: string[] } | null {
   if (!srcCanvas) return null;
 
   // No filter → return full sheet copy (backwards compatible)
@@ -658,54 +677,95 @@ export function extractSelectedAnimations(
     copy.height = srcCanvas.height;
     const cctx = get2DContext(copy);
     cctx.drawImage(srcCanvas, 0, 0);
-    return copy;
+    return { canvas: copy, included: [] };
   }
+
+  type Block = {
+    anim: string;
+    custom: boolean;
+    srcY: number;
+    height: number;
+    width: number;
+  };
 
   // Deduplicate while preserving request order
   const seen = new Set<string>();
-  const unique: string[] = [];
+  const blocks: Block[] = [];
+  const included: string[] = [];
+  const renderedCustomY = getCustomAnimYPositions();
   for (const a of animations) {
     if (seen.has(a)) continue;
+    const customDef = customAnimations[a];
+    if (customDef) {
+      // Custom animation area: appended below the standard sheet by
+      // runRenderCharacter; absent when no equipped item declares it.
+      const yOffset = renderedCustomY[a];
+      if (yOffset === undefined) continue; // not rendered → skip silently
+      seen.add(a);
+      const width = customDef.frameSize * customDef.frames[0].length;
+      blocks.push({
+        anim: a,
+        custom: true,
+        srcY: yOffset,
+        height: customDef.frameSize * customDef.frames.length,
+        width,
+      });
+      included.push(a);
+      continue;
+    }
     const cfg = animationConfigByName[a];
     if (!cfg) continue; // skip unknown animations silently
     seen.add(a);
-    unique.push(a);
+    blocks.push({
+      anim: a,
+      custom: false,
+      srcY: cfg.row * FRAME_SIZE,
+      height: cfg.num * FRAME_SIZE,
+      width: SHEET_WIDTH,
+    });
+    included.push(a);
   }
 
   // Still nothing valid → fall back to full sheet
-  if (unique.length === 0) {
+  if (blocks.length === 0) {
     const copy = document.createElement("canvas");
     copy.width = srcCanvas.width;
     copy.height = srcCanvas.height;
     const cctx = get2DContext(copy);
     cctx.drawImage(srcCanvas, 0, 0);
-    return copy;
+    return { canvas: copy, included: [] };
   }
 
-  // Compute total height and build row list
-  type Row = { anim: string; row: number; num: number; srcY: number; height: number };
-  const rows: Row[] = [];
+  // Compute total height and widest block
   let totalHeight = 0;
-  for (const a of unique) {
-    const cfg = animationConfigByName[a]!;
-    const srcY = cfg.row * FRAME_SIZE;
-    const height = cfg.num * FRAME_SIZE;
-    rows.push({ anim: a, row: cfg.row, num: cfg.num, srcY, height });
-    totalHeight += height;
+  let totalWidth = SHEET_WIDTH;
+  for (const b of blocks) {
+    totalHeight += b.height;
+    totalWidth = Math.max(totalWidth, b.width);
   }
 
   const out = document.createElement("canvas");
-  out.width = SHEET_WIDTH;
+  out.width = totalWidth;
   out.height = totalHeight;
   const octx = get2DContext(out);
 
   let dstY = 0;
-  for (const r of rows) {
-    octx.drawImage(srcCanvas, 0, r.srcY, SHEET_WIDTH, r.height, 0, dstY, SHEET_WIDTH, r.height);
-    dstY += r.height;
+  for (const b of blocks) {
+    octx.drawImage(
+      srcCanvas,
+      0,
+      b.srcY,
+      b.width,
+      b.height,
+      0,
+      dstY,
+      b.width,
+      b.height,
+    );
+    dstY += b.height;
   }
 
-  return out;
+  return { canvas: out, included };
 }
 
 /** Error returned by `getCanvas` when called before `initCanvas` runs. */

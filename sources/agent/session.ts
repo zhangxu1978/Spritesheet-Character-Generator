@@ -21,16 +21,13 @@
 //     our session-scoped selections object via a tiny adapter.
 
 import { ok, err, type Result } from "neverthrow";
-import {
-  BODY_TYPES,
-  ANIMATIONS,
-} from "../state/constants.ts";
+import { BODY_TYPES, ANIMATIONS } from "../state/constants.ts";
 import type { Selection, Selections } from "../state/state.ts";
 import {
   SHEET_WIDTH,
   SHEET_HEIGHT,
   renderCharacter,
-  extractSelectedAnimations,
+  extractSelectedAnimationsDetailed,
 } from "../canvas/renderer.ts";
 import { defaultCatalog, catalogReady } from "../state/catalog.ts";
 import type { ToolSession } from "./types.ts";
@@ -230,7 +227,9 @@ export class AgentSession implements ToolSession {
   }
 
   /** Encode the current offscreen canvas as a base64 PNG string. */
-  async toBase64Png(): Promise<Result<string, { kind: "canvas-not-initialized" }>> {
+  async toBase64Png(): Promise<
+    Result<string, { kind: "canvas-not-initialized" }>
+  > {
     this.ensureCanvas();
     if (!this.canvas) {
       return err({ kind: "canvas-not-initialized" });
@@ -243,12 +242,17 @@ export class AgentSession implements ToolSession {
   /**
    * Encode a subset of animations as a compact base64 PNG.
    * Pass empty array / undefined to get the full sheet (backwards compatible).
+   * Custom animations (tool_axe, …) are included when the current render
+   * contains their area; `includedAnimations` reports what was actually packed.
    */
-  async toBase64PngSelected(
-    animations?: string[],
-  ): Promise<
+  async toBase64PngSelected(animations?: string[]): Promise<
     Result<
-      { base64: string; width: number; height: number; includedAnimations: string[] },
+      {
+        base64: string;
+        width: number;
+        height: number;
+        includedAnimations: string[];
+      },
       { kind: "canvas-not-initialized" }
     >
   > {
@@ -256,27 +260,22 @@ export class AgentSession implements ToolSession {
     if (!this.canvas) {
       return err({ kind: "canvas-not-initialized" });
     }
-    const subset = extractSelectedAnimations(animations ?? [], this.canvas) ?? this.canvas;
+    const detailed = extractSelectedAnimationsDetailed(
+      animations ?? [],
+      this.canvas,
+    ) ?? {
+      canvas: this.canvas,
+      included: [],
+    };
+    const subset = detailed.canvas;
     const url = subset.toDataURL("image/png");
     const comma = url.indexOf(",");
     const base64 = comma >= 0 ? url.slice(comma + 1) : url;
-    // Report which animations actually made it into the output.
-    const valid = new Set(ANIMATIONS.map((a) => a.value));
-    const included: string[] = [];
-    if (animations && animations.length > 0) {
-      const seen = new Set<string>();
-      for (const a of animations) {
-        if (seen.has(a)) continue;
-        if (!valid.has(a)) continue;
-        seen.add(a);
-        included.push(a);
-      }
-    }
     return ok({
       base64,
       width: subset.width,
       height: subset.height,
-      includedAnimations: included,
+      includedAnimations: detailed.included,
     });
   }
 
@@ -287,7 +286,10 @@ export class AgentSession implements ToolSession {
   getCanvasForAnimations(animations?: string[]): HTMLCanvasElement | null {
     this.ensureCanvas();
     if (!this.canvas) return null;
-    return extractSelectedAnimations(animations ?? [], this.canvas) ?? this.canvas;
+    return (
+      extractSelectedAnimationsDetailed(animations ?? [], this.canvas)
+        ?.canvas ?? this.canvas
+    );
   }
 
   /** Snapshot the session state so it can be saved to hash / JSON. */
@@ -355,9 +357,8 @@ export { ALLOWED_BODY_TYPES, ALLOWED_ANIMATIONS };
 
 /** Re-export for tools that need to enumerate available body types. */
 export const BODY_TYPE_LIST: string[] = [...BODY_TYPES];
-export const ANIMATION_LIST: Array<{ value: string; label: string }> = ANIMATIONS.map(
-  (a) => ({ value: a.value, label: a.value }),
-);
+export const ANIMATION_LIST: Array<{ value: string; label: string }> =
+  ANIMATIONS.map((a) => ({ value: a.value, label: a.value }));
 
 /** Allow tools to validate an incoming selection payload. */
 export function isSelection(value: unknown): value is Selection {

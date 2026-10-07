@@ -22,6 +22,10 @@ import {
   makeMetaFilename,
 } from "./spritesheet-meta.ts";
 import { downloadFile } from "../canvas/download.ts";
+import {
+  getCustomAnimations,
+  getCustomAnimYPositions,
+} from "../canvas/preview-animation.ts";
 
 interface Attrs {
   /** Override base URL for /api/agent/* (mostly for tests). */
@@ -256,7 +260,11 @@ function onDownload(
     a.click();
     URL.revokeObjectURL(url);
 
-    // 2. Drop a sidecar JSON describing the spritesheet grid.
+    // 2. Drop a sidecar JSON describing the spritesheet grid. Custom
+    // animations (tool_axe, …) present in the render get their own entries
+    // with the larger frame size; selective exports re-pack offsets.
+    const renderedCustom = getCustomAnimations();
+    const customY = getCustomAnimYPositions();
     const meta = buildSpritesheetMeta({
       pngFilename,
       pngBytes: blob.size,
@@ -267,6 +275,12 @@ function onDownload(
         selectedAnimations && selectedAnimations.length > 0
           ? selectedAnimations
           : undefined,
+      customAnimations: Object.entries(renderedCustom).map(([name, def]) => ({
+        name,
+        frameSize: def.frameSize,
+        frameCount: def.frames[0].length,
+        yOffset: customY[name] ?? 0,
+      })),
     });
     downloadFile(
       JSON.stringify(meta, null, 2),

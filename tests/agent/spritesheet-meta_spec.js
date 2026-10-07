@@ -260,6 +260,96 @@ test("selective export: y-coordinate of every frame matches PNG pixels", () => {
   }
 });
 
+// ─── Custom animations (tool_axe, …) ────────────────────────────────────
+
+const AXE_LAYOUT = {
+  name: "tool_axe",
+  frameSize: 128,
+  frameCount: 10,
+  yOffset: 3456,
+};
+
+test("custom animation: full sheet entry uses its own frame size and absolute yOffset", () => {
+  const m = buildSpritesheetMeta({
+    pngFilename: "x.png",
+    sheetWidth: 1280,
+    sheetHeight: 3456 + 4 * 128,
+    bodyType: "male",
+    customAnimations: [AXE_LAYOUT],
+  });
+  const a = m.animations.tool_axe;
+  assert.ok(a, "tool_axe entry present");
+  assert.equal(a.custom, true);
+  assert.equal(a.frameWidth, 128);
+  assert.equal(a.frameHeight, 128);
+  assert.equal(a.yOffset, 3456);
+  assert.equal(a.columns, 10);
+  assert.deepEqual(a.cycle, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(a.rows, 4);
+  // 4 directions × 10 columns = 40 frames; frame rects use 128px.
+  assert.equal(a.frames.length, 40);
+  assert.equal(a.frames[0].x, 0);
+  assert.equal(a.frames[0].y, 3456);
+  assert.equal(a.frames[0].width, 128);
+  assert.equal(a.frames[9].x, 9 * 128);
+  // direction 1 (left) starts one 128px row below the area top.
+  assert.equal(a.frames[10].y, 3456 + 128);
+  assert.equal(a.frames[10].directionLabel, "left");
+  // Standard animations keep their fixed rows.
+  assert.equal(m.animations.walk.row, 8);
+  // sheetHeight stays caller-provided (the real PNG height).
+  assert.equal(m.sheetHeight, 3456 + 512);
+});
+
+test("custom animation: unknown custom names are filtered", () => {
+  const m = buildSpritesheetMeta({
+    pngFilename: "x.png",
+    sheetWidth: 832,
+    sheetHeight: 3456,
+    bodyType: "male",
+    customAnimations: [
+      { name: "not_a_custom_anim", frameSize: 128, frameCount: 4 },
+    ],
+  });
+  assert.equal(m.animations.not_a_custom_anim, undefined);
+  assert.equal(Object.keys(m.animations).length, EXPORTABLE_ANIMATIONS.length);
+});
+
+test("custom animation: selective export packs mixed 64px/128px blocks", () => {
+  const m = buildSpritesheetMeta({
+    pngFilename: "x.png",
+    sheetWidth: 1280,
+    sheetHeight: 0,
+    bodyType: "male",
+    includedAnimations: ["walk", "tool_axe", "idle"],
+    customAnimations: [AXE_LAYOUT],
+  });
+  // walk (4×64=256) + tool_axe (4×128=512) + idle (4×64=256) = 1024px.
+  assert.equal(m.sheetHeight, 1024);
+  assert.deepEqual(m.includedAnimations, ["walk", "tool_axe", "idle"]);
+  assert.equal(m.animations.walk.row, 0);
+  assert.equal(m.animations.tool_axe.row, 4); // 256px / 64
+  assert.equal(m.animations.tool_axe.yOffset, 256);
+  assert.equal(m.animations.tool_axe.frames[0].y, 256);
+  assert.equal(m.animations.tool_axe.frames[0].width, 128);
+  assert.equal(m.animations.idle.row, 12); // 256 + 512 = 768 → row 12
+  assert.equal(m.animations.idle.frames[0].y, 12 * 64);
+});
+
+test("custom animation: selective export skips custom names without layout", () => {
+  const m = buildSpritesheetMeta({
+    pngFilename: "x.png",
+    sheetWidth: 832,
+    sheetHeight: 0,
+    bodyType: "male",
+    includedAnimations: ["walk", "tool_axe"],
+  });
+  // No customAnimations layout → tool_axe silently dropped.
+  assert.deepEqual(m.includedAnimations, ["walk"]);
+  assert.equal(m.animations.tool_axe, undefined);
+  assert.equal(m.sheetHeight, 4 * 64);
+});
+
 // ─── Drift guard (TS vs MJS) ────────────────────────────────────────────
 
 test("sources/agent/spritesheet-meta.ts stays in sync with server/spritesheet-meta.mjs", () => {

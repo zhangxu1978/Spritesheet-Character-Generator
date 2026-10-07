@@ -18,7 +18,9 @@ import {
   ALLOWED_ANIMATIONS,
   isSelection,
 } from "./session.ts";
-import { defaultCatalog } from "../state/catalog.ts";
+import { customAnimations, customAnimationBase } from "../custom-animations.ts";
+import { defaultCatalog, catalogReady } from "../state/catalog.ts";
+import { normalizeSelectionRecolor } from "../state/selection-normalize.ts";
 import type {
   RegisteredTool,
   ToolContext,
@@ -73,7 +75,11 @@ async function listCategories(
   _args: Record<string, never>,
 ): Promise<ToolResult> {
   const res = defaultCatalog.getCategoryTree();
-  if (res.isErr()) return toolError(mapLoadError(res.error).kind, mapLoadError(res.error).message);
+  if (res.isErr())
+    return toolError(
+      mapLoadError(res.error).kind,
+      mapLoadError(res.error).message,
+    );
   return okData<CategoryTree>(res.value);
 }
 
@@ -95,13 +101,17 @@ const listItemsSchema: ToolSchema = {
     properties: {
       typeName: {
         type: "string",
-        description: "部件 typeName，例如 body / head / hair / torso / legs / feet",
+        description:
+          "部件 typeName，例如 body / head / hair / torso / legs / feet",
       },
       category: {
         type: "string",
         description: "可选的 category 路径（按 category tree 节点的 key 过滤）",
       },
-      detailed: { type: "boolean", description: "是否在结果里附带 variants/recolors" },
+      detailed: {
+        type: "boolean",
+        description: "是否在结果里附带 variants/recolors",
+      },
     },
     additionalProperties: false,
   },
@@ -112,7 +122,11 @@ async function listItems(
   args: ListItemsArgs,
 ): Promise<ToolResult> {
   const idxRes = defaultCatalog.getMetadataIndexes();
-  if (idxRes.isErr()) return toolError(mapLoadError(idxRes.error).kind, mapLoadError(idxRes.error).message);
+  if (idxRes.isErr())
+    return toolError(
+      mapLoadError(idxRes.error).kind,
+      mapLoadError(idxRes.error).message,
+    );
   const idx = idxRes.value;
   const byTypeName: Record<string, SlimByTypeNameRow[]> =
     idx.hashMatch?.itemsByTypeName ?? idx.byTypeName ?? {};
@@ -124,7 +138,9 @@ async function listItems(
     for (const arr of Object.values(byTypeName)) rows = rows.concat(arr);
   }
   if (args.category) {
-    rows = rows.filter((r) => r.name.toLowerCase().includes(args.category!.toLowerCase()));
+    rows = rows.filter((r) =>
+      r.name.toLowerCase().includes(args.category!.toLowerCase()),
+    );
   }
 
   if (!args.detailed) {
@@ -168,10 +184,13 @@ interface GetItemArgs {
 const getItemSchema: ToolSchema = {
   name: "get_item",
   description:
-    "获取单个物品的完整元数据，包括 name、type_name、required body types、可执行 animations、所有 variants、所有 recolors。",
+    "获取单个物品的完整元数据，包括 name、type_name、required body types、可执行 animations、所有 variants、所有 recolors。" +
+    "对武器/工具务必查看 animations 字段：里面出现的非标准动作名（如 tool_axe）就是该武器的专属攻击动作，导出攻击帧时要用它替代 slash/thrust。",
   parameters: {
     type: "object",
-    properties: { itemId: { type: "string", description: "物品 itemId（list_items 给出）" } },
+    properties: {
+      itemId: { type: "string", description: "物品 itemId（list_items 给出）" },
+    },
     required: ["itemId"],
     additionalProperties: false,
   },
@@ -182,7 +201,11 @@ async function getItem(
   args: GetItemArgs,
 ): Promise<ToolResult> {
   const lite = defaultCatalog.getItemLite(args.itemId);
-  if (lite.isErr()) return toolError(mapLoadError(lite.error).kind, mapLoadError(lite.error).message);
+  if (lite.isErr())
+    return toolError(
+      mapLoadError(lite.error).kind,
+      mapLoadError(lite.error).message,
+    );
   return okData(lite.value);
 }
 
@@ -190,7 +213,8 @@ async function getItem(
 
 const listBodyTypesSchema: ToolSchema = {
   name: "list_body_types",
-  description: "列出可选的身体类型（male/female/teen/child/muscular/pregnant）。",
+  description:
+    "列出可选的身体类型（male/female/teen/child/muscular/pregnant）。",
   parameters: { type: "object", properties: {}, additionalProperties: false },
 };
 async function listBodyTypes(): Promise<ToolResult> {
@@ -200,11 +224,51 @@ async function listBodyTypes(): Promise<ToolResult> {
 const listAnimationsSchema: ToolSchema = {
   name: "list_animations",
   description:
-    "列出可在预览中切换的动作（spellcast / thrust / walk / slash / shoot / hurt / climb / idle / jump / sit / emote / run / combat / 1h_backslash / 1h_halfslash）。",
+    "列出可在导出 PNG 中使用的动作。分两类：标准动作（spellcast / thrust / walk / slash / shoot / hurt / climb / idle / jump / sit / emote / run / combat / 1h_backslash / 1h_halfslash，对所有部件通用）和自定义动作（custom:true，如 tool_axe / tool_hammer / tool_whip / tool_rod / slash_oversize，只被声明它的武器/工具渲染）。" +
+    "武器/工具与动作的映射：每个部件只参与其元数据 animations 数组列出的动作——斧/镐的攻击动作是 tool_axe、锤是 tool_hammer，标准 slash 行里不会有它们；匕首等普通武器直接用标准 slash。用 get_item 查看武器的 animations 字段确认。",
   parameters: { type: "object", properties: {}, additionalProperties: false },
 };
+
+/** Chinese labels for custom animations (mirror of server/custom-animations.mjs). */
+export const CUSTOM_ANIM_LABELS: Record<string, string> = {
+  wheelchair: "轮椅",
+  tool_rod: "工具·挥杖",
+  slash_128: "挥砍 128px",
+  backslash_128: "单手反挥 128px",
+  halfslash_128: "单手半挥 128px",
+  thrust_128: "突刺 128px",
+  walk_128: "行走 128px",
+  slash_oversize: "挥砍 192px",
+  thrust_oversize: "突刺 192px",
+  slash_reverse_oversize: "反手挥砍 192px",
+  whip_oversize: "鞭击 192px",
+  tool_whip: "工具·挥鞭",
+  tool_axe: "工具·挥斧",
+  tool_hammer: "工具·锤击",
+};
+
+/** Standard + custom animations (custom ones render only for their items). */
+const FULL_ANIMATION_LIST: Array<{
+  value: string;
+  label: string;
+  custom?: boolean;
+  frameSize?: number;
+  frameCount?: number;
+  baseAnimation?: string;
+}> = [
+  ...ANIMATION_LIST,
+  ...Object.entries(customAnimations).map(([value, def]) => ({
+    value,
+    label: CUSTOM_ANIM_LABELS[value] ?? value,
+    custom: true,
+    frameSize: def.frameSize,
+    frameCount: def.frames[0].length,
+    baseAnimation: customAnimationBase(def),
+  })),
+];
+
 async function listAnimations(): Promise<ToolResult> {
-  return okData(ANIMATION_LIST);
+  return okData(FULL_ANIMATION_LIST);
 }
 
 // ─── Tool: get_state ─────────────────────────────────────────────────────
@@ -265,7 +329,8 @@ interface SetSelectionArgs {
 const setSelectionSchema: ToolSchema = {
   name: "set_selection",
   description:
-    "为指定 typeName（或 itemId 所在 typeName）写入一个 Selection。selection 必须包含 itemId / name 以及 variant / recolor 二者之一。",
+    "为指定 typeName（或 itemId 所在 typeName）写入一个 Selection。selection 必须包含 itemId / name；recolor / variant 应从 get_item 返回的 recolors / variants 里选——" +
+    "有 recolors 的部件（胸甲/裤子/靴子/头发/帽子等调色板部件）不给 recolor 时会自动填默认色，漏给不会导致部件消失。",
   parameters: {
     type: "object",
     properties: {
@@ -273,7 +338,10 @@ const setSelectionSchema: ToolSchema = {
         type: "string",
         description: "目标 typeName；与 itemId 至少给一个",
       },
-      itemId: { type: "string", description: "目标 itemId；与 typeName 至少给一个" },
+      itemId: {
+        type: "string",
+        description: "目标 itemId；与 typeName 至少给一个",
+      },
       selection: {
         type: "object",
         description: "完整的 Selection 对象",
@@ -297,11 +365,21 @@ async function setSelection(
   args: SetSelectionArgs,
 ): Promise<ToolResult> {
   if (!isSelection(args.selection)) {
-    return toolError("invalid-args", "selection must include string itemId and name");
+    return toolError(
+      "invalid-args",
+      "selection must include string itemId and name",
+    );
   }
   // Validate the item exists in the catalog before storing it.
   const lite = defaultCatalog.getItemLite(args.selection.itemId);
-  if (lite.isErr()) return toolError(mapLoadError(lite.error).kind, mapLoadError(lite.error).message);
+  if (lite.isErr())
+    return toolError(
+      mapLoadError(lite.error).kind,
+      mapLoadError(lite.error).message,
+    );
+  // Palette resolution needs the item metadata chunks; without them the
+  // recolor fallback below would be a silent no-op.
+  await catalogReady.onLayersReady;
 
   // Determine the selection group: prefer explicit typeName, else use the
   // item's own type_name, else fall back to the itemId (one-off group).
@@ -311,13 +389,19 @@ async function setSelection(
     args.itemId ??
     args.selection.itemId;
 
-  const next: Selections = ctx.session.getSelections();
-  next[group] = {
+  const stored: Selection = {
     ...args.selection,
     subId: args.selection.subId ?? null,
     variant: args.selection.variant ?? null,
     recolor: args.selection.recolor ?? null,
   };
+  // Recolor-capable items (torso/legs/feet/hair/hats…) submitted without a
+  // recolor resolve sprite paths that 404 → the item silently vanishes from
+  // the render. Fill the palette default, same as a Web UI tree click.
+  normalizeSelectionRecolor(stored);
+
+  const next: Selections = ctx.session.getSelections();
+  next[group] = stored;
   ctx.session.setSelections(next);
   await ctx.session.render();
   return okData({ typeName: group, selection: next[group] });
@@ -350,7 +434,11 @@ async function clearSelection(
   let group = args.typeName;
   if (!group && args.itemId) {
     const lite = defaultCatalog.getItemLite(args.itemId);
-    if (lite.isErr()) return toolError(mapLoadError(lite.error).kind, mapLoadError(lite.error).message);
+    if (lite.isErr())
+      return toolError(
+        mapLoadError(lite.error).kind,
+        mapLoadError(lite.error).message,
+      );
     group = lite.value.type_name ?? args.itemId;
   }
   if (!group) {
@@ -375,7 +463,9 @@ const setAnimationSchema: ToolSchema = {
   description: "切换预览动作。",
   parameters: {
     type: "object",
-    properties: { animation: { type: "string", enum: ANIMATION_LIST.map((a) => a.value) } },
+    properties: {
+      animation: { type: "string", enum: ANIMATION_LIST.map((a) => a.value) },
+    },
     required: ["animation"],
     additionalProperties: false,
   },
@@ -386,7 +476,10 @@ async function setAnimation(
   args: SetAnimationArgs,
 ): Promise<ToolResult> {
   if (!ALLOWED_ANIMATIONS.has(args.animation)) {
-    return toolError("invalid-args", `unsupported animation: ${args.animation}`);
+    return toolError(
+      "invalid-args",
+      `unsupported animation: ${args.animation}`,
+    );
   }
   ctx.session.setAnimation(args.animation);
   return okData({ animation: ctx.session.getAnimation() });
@@ -412,7 +505,7 @@ const renderSpritesheetSchema: ToolSchema = {
   description:
     "把当前 session 渲染到 offscreen canvas 并返回 PNG（base64）。" +
     "默认导出完整精灵表（全部动作，高 3456px）。" +
-    "如果是 NPC / 小怪，建议传 animations 数组只打包需要的动作（例如 villagers 只要 [\"idle\",\"walk\"]，固定摆件只要 [\"idle\"]），这样 PNG 会小很多。",
+    '如果是 NPC / 小怪，建议传 animations 数组只打包需要的动作（例如 villagers 只要 ["idle","walk"]，固定摆件只要 ["idle"]），这样 PNG 会小很多。',
   parameters: {
     type: "object",
     properties: {
@@ -428,7 +521,8 @@ const renderSpritesheetSchema: ToolSchema = {
         type: "array",
         items: { type: "string" },
         description:
-          "可选：要打包进 PNG 的动作列表（如 [\"idle\",\"walk\"]）。" +
+          '可选：要打包进 PNG 的动作列表（如 ["idle","walk"]）。' +
+          "装备斧/锤/鞭/法杖等工具时，把该武器的专属动作（get_item 的 animations 字段里列出的，如 tool_axe）加进来，否则没有武器攻击帧。" +
           "传空数组或不传则导出全部动作（完整大表）。",
       },
     },
@@ -442,13 +536,18 @@ async function renderSpritesheet(
 ): Promise<ToolResult> {
   if (args.animation) {
     if (!ALLOWED_ANIMATIONS.has(args.animation)) {
-      return toolError("invalid-args", `unsupported animation: ${args.animation}`);
+      return toolError(
+        "invalid-args",
+        `unsupported animation: ${args.animation}`,
+      );
     }
     ctx.session.setAnimation(args.animation);
   }
   await ctx.session.render();
   const includeImage = args.includeImage !== false;
-  const wantAnims = Array.isArray(args.animations) ? args.animations : undefined;
+  const wantAnims = Array.isArray(args.animations)
+    ? args.animations
+    : undefined;
 
   if (!includeImage) {
     const canvas = ctx.session.getCanvas();
@@ -480,7 +579,9 @@ async function renderSpritesheet(
 
   if (png.isErr()) {
     return toolError(
-      png.error.kind === "canvas-not-initialized" ? "canvas-not-initialized" : "internal",
+      png.error.kind === "canvas-not-initialized"
+        ? "canvas-not-initialized"
+        : "internal",
       png.error.kind,
     );
   }
@@ -516,7 +617,8 @@ const suggestAnimationPresetSchema: ToolSchema = {
     properties: {
       role: {
         type: "string",
-        description: "用户描述的角色定位，例如「村民 NPC」「最终 BOSS」「商店老板」「可操作玩家」",
+        description:
+          "用户描述的角色定位，例如「村民 NPC」「最终 BOSS」「商店老板」「可操作玩家」",
       },
     },
     additionalProperties: false,
@@ -534,16 +636,37 @@ const ANIMATION_PRESETS: Array<{
   rationale: string;
 }> = [
   {
-    keywords: ["摆件", "静态", "装饰", "prop", "static", "柱子", "火炬", "招牌", "箱子"],
+    keywords: [
+      "摆件",
+      "静态",
+      "装饰",
+      "prop",
+      "static",
+      "柱子",
+      "火炬",
+      "招牌",
+      "箱子",
+    ],
     label: "静态摆件",
     animations: ["idle"],
     rationale: "没有移动，只需要一个待机帧即可；通常只占 1 行 (256px 高)。",
   },
   {
-    keywords: ["村民", "npc", "老板", "平民", "villager", "shop", "老人", "小孩", "路人"],
+    keywords: [
+      "村民",
+      "npc",
+      "老板",
+      "平民",
+      "villager",
+      "shop",
+      "老人",
+      "小孩",
+      "路人",
+    ],
     label: "普通 NPC / 村民",
     animations: ["idle", "walk"],
-    rationale: "大部分时间站着说话，偶尔走动；不需要战斗相关动作。约 2 行 (512px)。",
+    rationale:
+      "大部分时间站着说话，偶尔走动；不需要战斗相关动作。约 2 行 (512px)。",
   },
   {
     keywords: ["商人", "商店", "黑商", "merchant", "banker", "柜员"],
@@ -585,8 +708,18 @@ const ANIMATION_PRESETS: Array<{
     keywords: ["玩家", "主角", "player", "hero", "可操作", "pc"],
     label: "玩家 / 主角（完整版）",
     animations: [
-      "spellcast", "thrust", "walk", "slash", "shoot", "hurt",
-      "climb", "idle", "jump", "sit", "emote", "run",
+      "spellcast",
+      "thrust",
+      "walk",
+      "slash",
+      "shoot",
+      "hurt",
+      "climb",
+      "idle",
+      "jump",
+      "sit",
+      "emote",
+      "run",
     ],
     rationale: "所有常用动作全部打包，方便玩家换装/切武器时复用。",
   },
@@ -609,10 +742,18 @@ async function suggestAnimationPreset(
   args: SuggestAnimationPresetArgs,
 ): Promise<ToolResult> {
   const raw = (args.role ?? "").toLowerCase();
+  const weaponAnimationNote =
+    "武器/工具专属动作提醒：斧/镐的攻击动作是 tool_axe、锤是 tool_hammer、鞭是 tool_whip、法杖/钓竿是 tool_rod，" +
+    "这些不是标准 slash/thrust；大剑/长柄/弓等还有加大动作（slash_oversize / thrust_oversize / walk_128 等）。" +
+    "装备哪件武器就先用 get_item 查它的 animations 字段，把其中列出的动作名加进导出列表，否则导出的角色没有武器攻击帧。";
   if (!raw.trim()) {
     return okData({
       hint: "请先告诉我这个角色的用途（玩家 / NPC / BOSS / 摆件 / 怪物 / 坐骑 …），我才能给出最适合的动作清单。",
-      presets: ANIMATION_PRESETS.map((p) => ({ label: p.label, animations: p.animations })),
+      presets: ANIMATION_PRESETS.map((p) => ({
+        label: p.label,
+        animations: p.animations,
+      })),
+      weaponAnimationNote,
     });
   }
   // Best effort keyword match, fall back to player preset.
@@ -621,7 +762,9 @@ async function suggestAnimationPreset(
   );
   if (!best) {
     // Heuristic: if we can't match, give the villager preset as conservative default.
-    best = ANIMATION_PRESETS.find((p) => p.label === "普通 NPC / 村民") ?? ANIMATION_PRESETS[1];
+    best =
+      ANIMATION_PRESETS.find((p) => p.label === "普通 NPC / 村民") ??
+      ANIMATION_PRESETS[1];
   }
   const matches = ANIMATION_PRESETS.filter((p) =>
     p.keywords.some((kw) => raw.includes(kw.toLowerCase())),
@@ -635,8 +778,13 @@ async function suggestAnimationPreset(
     },
     alternatives: matches
       .filter((m) => m.label !== best!.label)
-      .map((m) => ({ label: m.label, animations: m.animations, rationale: m.rationale })),
+      .map((m) => ({
+        label: m.label,
+        animations: m.animations,
+        rationale: m.rationale,
+      })),
     fullSheetAnimations: [...ALLOWED_ANIMATIONS],
+    weaponAnimationNote,
     tip:
       "在调用 render_spritesheet 时把推荐列表作为 animations 参数传入，" +
       "PNG 就只会包含这些行；如果用户之后想要更多动作，可以再次导出完整表。",
@@ -662,19 +810,71 @@ async function resetToDefaults(ctx: ToolContext): Promise<ToolResult> {
 // ─── Registration ────────────────────────────────────────────────────────
 
 export const TOOLS: RegisteredTool[] = [
-  { name: listCategoriesSchema.name, schema: listCategoriesSchema, handler: listCategories as RegisteredTool["handler"] },
-  { name: listItemsSchema.name, schema: listItemsSchema, handler: listItems as RegisteredTool["handler"] },
-  { name: getItemSchema.name, schema: getItemSchema, handler: getItem as RegisteredTool["handler"] },
-  { name: listBodyTypesSchema.name, schema: listBodyTypesSchema, handler: listBodyTypes as RegisteredTool["handler"] },
-  { name: listAnimationsSchema.name, schema: listAnimationsSchema, handler: listAnimations as RegisteredTool["handler"] },
-  { name: suggestAnimationPresetSchema.name, schema: suggestAnimationPresetSchema, handler: suggestAnimationPreset as RegisteredTool["handler"] },
-  { name: getStateSchema.name, schema: getStateSchema, handler: getState as RegisteredTool["handler"] },
-  { name: setBodyTypeSchema.name, schema: setBodyTypeSchema, handler: setBodyType as RegisteredTool["handler"] },
-  { name: setSelectionSchema.name, schema: setSelectionSchema, handler: setSelection as RegisteredTool["handler"] },
-  { name: clearSelectionSchema.name, schema: clearSelectionSchema, handler: clearSelection as RegisteredTool["handler"] },
-  { name: setAnimationSchema.name, schema: setAnimationSchema, handler: setAnimation as RegisteredTool["handler"] },
-  { name: renderSpritesheetSchema.name, schema: renderSpritesheetSchema, handler: renderSpritesheet as RegisteredTool["handler"] },
-  { name: resetToDefaultsSchema.name, schema: resetToDefaultsSchema, handler: resetToDefaults as RegisteredTool["handler"] },
+  {
+    name: listCategoriesSchema.name,
+    schema: listCategoriesSchema,
+    handler: listCategories as RegisteredTool["handler"],
+  },
+  {
+    name: listItemsSchema.name,
+    schema: listItemsSchema,
+    handler: listItems as RegisteredTool["handler"],
+  },
+  {
+    name: getItemSchema.name,
+    schema: getItemSchema,
+    handler: getItem as RegisteredTool["handler"],
+  },
+  {
+    name: listBodyTypesSchema.name,
+    schema: listBodyTypesSchema,
+    handler: listBodyTypes as RegisteredTool["handler"],
+  },
+  {
+    name: listAnimationsSchema.name,
+    schema: listAnimationsSchema,
+    handler: listAnimations as RegisteredTool["handler"],
+  },
+  {
+    name: suggestAnimationPresetSchema.name,
+    schema: suggestAnimationPresetSchema,
+    handler: suggestAnimationPreset as RegisteredTool["handler"],
+  },
+  {
+    name: getStateSchema.name,
+    schema: getStateSchema,
+    handler: getState as RegisteredTool["handler"],
+  },
+  {
+    name: setBodyTypeSchema.name,
+    schema: setBodyTypeSchema,
+    handler: setBodyType as RegisteredTool["handler"],
+  },
+  {
+    name: setSelectionSchema.name,
+    schema: setSelectionSchema,
+    handler: setSelection as RegisteredTool["handler"],
+  },
+  {
+    name: clearSelectionSchema.name,
+    schema: clearSelectionSchema,
+    handler: clearSelection as RegisteredTool["handler"],
+  },
+  {
+    name: setAnimationSchema.name,
+    schema: setAnimationSchema,
+    handler: setAnimation as RegisteredTool["handler"],
+  },
+  {
+    name: renderSpritesheetSchema.name,
+    schema: renderSpritesheetSchema,
+    handler: renderSpritesheet as RegisteredTool["handler"],
+  },
+  {
+    name: resetToDefaultsSchema.name,
+    schema: resetToDefaultsSchema,
+    handler: resetToDefaults as RegisteredTool["handler"],
+  },
 ];
 
 export function getToolSchemas(): ToolSchema[] {
@@ -701,5 +901,10 @@ export async function runTool(
 }
 
 // Re-export session helpers so server/ can stay framework-agnostic.
-export { createOrGetSession, getSession, dropSession, listSessionIds } from "./session.ts";
+export {
+  createOrGetSession,
+  getSession,
+  dropSession,
+  listSessionIds,
+} from "./session.ts";
 export { AgentSession } from "./session.ts";

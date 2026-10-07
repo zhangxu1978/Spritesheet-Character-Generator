@@ -15,6 +15,11 @@ import { fileURLToPath } from "node:url";
 import { loadCatalogSnapshot } from "../catalog-snapshot.mjs";
 import { suggestAnimationPresetData } from "../animation-presets.mjs";
 import {
+  CUSTOM_ANIMATIONS,
+  listCustomAnimations,
+  isCustomAnimation,
+} from "../custom-animations.mjs";
+import {
   buildSpritesheetMeta,
   makePngFilename,
   makeMetaFilename,
@@ -32,7 +37,60 @@ const REPO_ROOT = path.resolve(
 );
 
 const FULL_SHEET_HINT =
-  "不传 animations 时导出完整大表（约 832x3456px）。NPC/小怪/摆件等角色请传 animations 子集（如 [\"idle\",\"walk\"]），输出小得多。";
+  "不传 animations 时导出完整大表（标准动作约 832x3456px；若装备了斧/锤/大剑等带专属动作的武器/工具，下方还会追加更大的专属动作区）。NPC/小怪/摆件等角色请传 animations 子集（如 [\"idle\",\"walk\"]），输出小得多。";
+
+const WEAPON_ANIM_NOTE =
+  "武器/工具与动作的映射关系：每个部件只参与其元数据 animations 数组列出的动作。" +
+  "普通武器（匕首/剑等）直接用标准动作 slash/thrust；斧/镐/锤/鞭/法杖类工具有专属自定义动作" +
+  "（tool_axe / tool_hammer / tool_whip / tool_rod），大剑/长柄/弓等有加大动作（*_oversize / *_128）。" +
+  "用 get_item 查看武器的 animations 字段即可确认它支持哪些动作——装备斧头时挥砍必须用 tool_axe 而不是 slash。";
+
+/** Valid export animation names: standard whitelist + custom registry. */
+function allValidAnimationNames() {
+  return [
+    ...listExportableAnimations().map((a) => a.value),
+    ...Object.keys(CUSTOM_ANIMATIONS),
+  ];
+}
+
+/** Union of custom animation names declared by the given selections (in order). */
+function declaredCustomAnimations(selections, byId) {
+  const seen = new Set();
+  const declared = [];
+  for (const sel of Object.values(selections)) {
+    const rec = byId.get(sel.itemId);
+    for (const a of rec?.animations ?? []) {
+      if (isCustomAnimation(a) && !seen.has(a)) {
+        seen.add(a);
+        declared.push(a);
+      }
+    }
+  }
+  return declared;
+}
+
+/**
+ * Custom-animation layout for meta building without a real render:
+ * selective → request order (offsets recomputed); full sheet → stacked below
+ * the 3456px standard sheet in declaration order.
+ */
+function customLayoutFor(declared, requestedAnimations) {
+  const layout = (name, yOffset) => ({
+    name,
+    frameSize: CUSTOM_ANIMATIONS[name].frameSize,
+    frameCount: CUSTOM_ANIMATIONS[name].frameCount,
+    ...(yOffset !== undefined ? { yOffset } : {}),
+  });
+  if (requestedAnimations && requestedAnimations.length > 0) {
+    return requestedAnimations.filter(isCustomAnimation).map((name) => layout(name));
+  }
+  let y = 3456;
+  return declared.map((name) => {
+    const entry = layout(name, y);
+    y += 4 * CUSTOM_ANIMATIONS[name].frameSize;
+    return entry;
+  });
+}
 
 // ─── Tool definitions (MCP ToolDef: name + description + inputSchema) ────
 
@@ -44,7 +102,11 @@ export const MCP_TOOLS = [
   },
   {
     name: "list_animations",
-    description: "列出全部可导出的动作（可传给 generate_spritesheet 的 animations 参数）。",
+    description:
+      "列出全部可导出的动作（可传给 generate_spritesheet 的 animations 参数）。" +
+      "分两类：标准动作（spellcast/walk/slash…，对所有部件通用）和自定义动作（custom:true，" +
+      "tool_axe/tool_hammer/tool_whip/tool_rod/slash_oversize 等，只被声明它的武器/工具渲染，usedBy 列出这些物品）。" +
+      WEAPON_ANIM_NOTE,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -67,7 +129,10 @@ export const MCP_TOOLS = [
   },
   {
     name: "get_item",
-    description: "获取单个物品的完整元数据（variants/recolors/animations 等）。",
+    description:
+      "获取单个物品的完整元数据（variants/recolors/animations 等）。" +
+      "对武器/工具务必查看返回的 animations 字段：里面出现的非标准动作名（如 tool_axe）就是该武器的专属攻击动作，" +
+      "导出攻击帧时要用它替代 slash/thrust。",
     inputSchema: {
       type: "object",
       properties: { itemId: { type: "string" } },
@@ -100,13 +165,17 @@ export const MCP_TOOLS = [
         bodyType: { type: "string", enum: BODY_TYPES, description: "默认 male" },
         selections: {
           type: "object",
-          description: "键为部件分组名（任意、仅作去重），值为 {itemId, name?, variant?, recolor?, subId?}",
+          description:
+            "键为部件分组名，值为 {itemId, name?, variant?, recolor?, subId?}。" +
+            "分组键只是标签（渲染不看它），但推荐用物品自身的 typeName（torso/legs/feet/weapon/hat/hair/expression…）以免歧义；" +
+            "缺失的 body/头/表情会自动补全。",
           additionalProperties: { type: "object" },
         },
         animations: {
           type: "array",
           items: { type: "string" },
-          description: "要打包的动作列表；不传/空 = 全部动作",
+          description:
+            "要打包的动作列表；标准动作对所有部件通用，自定义动作（tool_axe 等）只被装备的对应武器/工具渲染（见 get_item 的 animations 字段）。不传/空 = 全部动作",
         },
       },
       additionalProperties: false,
@@ -130,7 +199,9 @@ export const MCP_TOOLS = [
         animations: {
           type: "array",
           items: { type: "string" },
-          description: "要打包的动作列表；" + FULL_SHEET_HINT,
+          description:
+            "要打包的动作列表；装备斧/锤等工具时记得把专属动作（如 tool_axe）加进来。" +
+            FULL_SHEET_HINT,
         },
         includeImage: { type: "boolean", description: "默认 true；false 时结果不含 base64 图片（只写盘/返回元数据）" },
         outputDir: { type: "string", description: "输出目录（绝对路径或相对仓库根）；传入则写盘三个文件" },
@@ -148,7 +219,13 @@ export const MCP_TOOLS = [
  * Missing default trio (body color + human head + neutral face) is completed
  * using the catalog snapshot, mirroring AgentSession's buildDefaultSelections.
  *
- * @returns {{ ok: true, config: object, validAnimations: string[] } |
+ * Animations: the standard whitelist accepts every body part; custom
+ * animations (tool_axe, …) are also accepted — they only render when one of
+ * the selected items declares them, so undeclared ones produce a warning
+ * instead of a hard error.
+ *
+ * @returns {{ ok: true, config: object, validAnimations: string[],
+ *             declaredCustomAnimations: string[], warnings: string[] } |
  *           { ok: false, message: string }}
  */
 export function validateConfig(args) {
@@ -195,6 +272,11 @@ export function validateConfig(args) {
     { itemId: "face_neutral", recolor: "light", name: "Neutral (light)" },
   ];
   const usedItemIds = new Set(Object.values(selections).map((s) => s.itemId));
+  const usedTypeNames = new Set(
+    Object.values(selections)
+      .map((s) => byId.get(s.itemId)?.typeName)
+      .filter(Boolean),
+  );
   for (const def of trio) {
     if (usedItemIds.has(def.itemId)) continue;
     let itemId = def.itemId;
@@ -204,21 +286,29 @@ export function validateConfig(args) {
       rec = byId.get(itemId);
     }
     if (!rec) continue; // catalog lacks it entirely; renderer will too — skip
-    // Group key = catalog typeName (falls back to itemId), matching how
-    // getSelectionGroup derives keys in the browser.
     const group = rec.typeName ?? itemId;
-    if (selections[group]) continue; // group already equipped with another item
-    selections[group] = {
+    // Skip only when an item of the same slot type is already equipped
+    // (e.g. a custom head). Group keys are arbitrary labels — a helmet
+    // (typeName "hat") stored under a user key "head" must NOT suppress the
+    // human head underneath it, so never key the check off the group name.
+    if (usedTypeNames.has(group)) continue;
+    // If that group key happens to be taken by another slot type, fall back
+    // to the itemId as the key (the renderer ignores key names).
+    const groupKey = selections[group] ? itemId : group;
+    selections[groupKey] = {
       itemId,
       variant: "",
       recolor: def.recolor,
       name: rec.name ?? def.name,
     };
     usedItemIds.add(itemId);
+    usedTypeNames.add(group);
   }
 
-  // Validate animations against the exportable whitelist.
-  const validAnimations = listExportableAnimations().map((a) => a.value);
+  // Validate animations against the exportable whitelist (+ custom registry).
+  const validAnimations = allValidAnimationNames();
+  const declaredCustom = declaredCustomAnimations(selections, byId);
+  const warnings = [];
   let animations;
   if (Array.isArray(args.animations) && args.animations.length > 0) {
     const invalid = args.animations.filter((a) => !validAnimations.includes(a));
@@ -229,6 +319,15 @@ export function validateConfig(args) {
       };
     }
     animations = [...new Set(args.animations)];
+    // Requested custom animations that no selected item declares → warn
+    // (the render simply won't contain that area).
+    for (const a of animations) {
+      if (isCustomAnimation(a) && !declaredCustom.includes(a)) {
+        warnings.push(
+          `动作 ${a} 没有被当前装备的任何部件声明（见 get_item 的 animations 字段），导出的 PNG 将不包含该动作区。`,
+        );
+      }
+    }
   } else {
     animations = []; // empty = full sheet
   }
@@ -240,7 +339,13 @@ export function validateConfig(args) {
     selectedAnimation: animations[0] ?? "walk",
     animations,
   };
-  return { ok: true, config, validAnimations };
+  return {
+    ok: true,
+    config,
+    validAnimations,
+    declaredCustomAnimations: declaredCustom,
+    warnings,
+  };
 }
 
 // ─── Handlers ──────────────────────────────────────────────────────────────
@@ -260,8 +365,22 @@ export async function callTool(name, args, ctx) {
     case "list_body_types":
       return textResult(BODY_TYPES);
 
-    case "list_animations":
-      return textResult(listExportableAnimations());
+    case "list_animations": {
+      // Build the custom-name → items reverse map from the catalog snapshot
+      // (items' `animations` arrays are the authoritative relationship).
+      const usedBy = {};
+      for (const rec of loadCatalogSnapshot().items) {
+        for (const a of rec.animations ?? []) {
+          if (isCustomAnimation(a)) {
+            (usedBy[a] ??= []).push(rec.itemId);
+          }
+        }
+      }
+      return textResult([
+        ...listExportableAnimations(),
+        ...listCustomAnimations().map((c) => ({ ...c, usedBy: usedBy[c.value] ?? [] })),
+      ]);
+    }
 
     case "list_categories":
       return textResult(loadCatalogSnapshot().categories);
@@ -290,7 +409,27 @@ export async function callTool(name, args, ctx) {
           isError: true,
         };
       }
-      return textResult(rec);
+      // Make the weapon/tool → animation relationship explicit: split the
+      // item's animation list into standard vs custom and explain how to use
+      // the custom ones.
+      const customAnims = (rec.animations ?? []).filter(isCustomAnimation);
+      const payload = { ...rec };
+      if (customAnims.length > 0) {
+        payload.animationGuide = {
+          standardAnimations: (rec.animations ?? []).filter((a) => !isCustomAnimation(a)),
+          customAnimations: customAnims.map((name) => ({
+            name,
+            label: CUSTOM_ANIMATIONS[name].label,
+            frameSize: CUSTOM_ANIMATIONS[name].frameSize,
+            baseAnimation: CUSTOM_ANIMATIONS[name].baseAnimation,
+            note: CUSTOM_ANIMATIONS[name].note,
+          })),
+          tip:
+            "customAnimations 里的动作是该部件专属的（标准 slash/thrust 行里不会出现它）。" +
+            "导出该部件的攻击帧时，把这里的动作名加进 generate_spritesheet 的 animations 参数，替代或补充标准动作。",
+        };
+      }
+      return textResult(payload);
     }
 
     case "suggest_animation_preset":
@@ -301,16 +440,39 @@ export async function callTool(name, args, ctx) {
       if (!v.ok) {
         return { content: [{ type: "text", text: v.message }], isError: true };
       }
+      // Preview meta: custom-animation areas from the registry (no render
+      // here). Selective → request order; full → stacked below the 3456px
+      // standard sheet.
+      const customLayout = customLayoutFor(
+        v.declaredCustomAnimations,
+        v.config.animations,
+      );
+      let previewWidth = 832;
+      let previewHeight = 3456;
+      for (const c of customLayout) {
+        previewWidth = Math.max(previewWidth, c.frameSize * c.frameCount);
+        previewHeight += 4 * c.frameSize;
+      }
       const metaPreview = buildSpritesheetMeta({
         pngFilename: "preview.png",
-        sheetWidth: 832,
-        sheetHeight: 0,
+        sheetWidth: previewWidth,
+        sheetHeight: previewHeight,
         bodyType: v.config.bodyType,
         includedAnimations: v.config.animations.length > 0 ? v.config.animations : undefined,
+        customAnimations: customLayout,
       });
+      const hints = {};
+      if (v.declaredCustomAnimations.length > 0) {
+        hints.animationHints = {
+          declaredCustomAnimations: v.declaredCustomAnimations,
+          note: WEAPON_ANIM_NOTE,
+        };
+      }
+      if (v.warnings.length > 0) hints.warnings = v.warnings;
       return textResult(
         {
           config: v.config,
+          ...hints,
           metaPreview: {
             sheetWidth: metaPreview.sheetWidth,
             sheetHeight: metaPreview.sheetHeight,
@@ -320,7 +482,14 @@ export async function callTool(name, args, ctx) {
             animations: Object.fromEntries(
               Object.entries(metaPreview.animations).map(([k, a]) => [
                 k,
-                { row: a.row, rows: a.rows, cycle: a.cycle },
+                {
+                  row: a.row,
+                  rows: a.rows,
+                  cycle: a.cycle,
+                  ...(a.custom
+                    ? { custom: true, frameWidth: a.frameWidth, frameHeight: a.frameHeight }
+                    : {}),
+                },
               ]),
             ),
           },
@@ -357,14 +526,16 @@ export async function callTool(name, args, ctx) {
         config.selections = rendered.normalizedSelections;
       }
 
-      // Frame metadata JSON (pure function).
+      // Frame metadata JSON (pure function). Custom-animation areas reported
+      // by the renderer (tool_axe, …) are described with their own frame size.
       const meta = buildSpritesheetMeta({
         pngFilename,
         pngBytes,
-        sheetWidth: rendered.fullWidth ?? rendered.width,
-        sheetHeight: rendered.fullHeight ?? rendered.height,
+        sheetWidth: rendered.width,
+        sheetHeight: rendered.height,
         bodyType: config.bodyType,
         includedAnimations: animationsArg,
+        customAnimations: rendered.customAnimations ?? [],
       });
 
       const files = {};
@@ -400,12 +571,24 @@ export async function callTool(name, args, ctx) {
           frameHeight: meta.frameHeight,
           frameColumns: meta.frameColumns,
           animations: Object.fromEntries(
-            Object.entries(meta.animations).map(([k, a]) => [k, { row: a.row, rows: a.rows, cycle: a.cycle }]),
+            Object.entries(meta.animations).map(([k, a]) => [
+              k,
+              a.custom
+                ? { row: a.row, rows: a.rows, cycle: a.cycle, frameWidth: a.frameWidth, frameHeight: a.frameHeight }
+                : { row: a.row, rows: a.rows, cycle: a.cycle },
+            ]),
           ),
         },
         files,
         hint: "meta 为帧元数据 JSON（每帧 x/y/width/height/direction）；config 可回导入 Web UI。",
       };
+      if (v.declaredCustomAnimations.length > 0) {
+        summary.animationHints = {
+          declaredCustomAnimations: v.declaredCustomAnimations,
+          note: WEAPON_ANIM_NOTE,
+        };
+      }
+      if (v.warnings.length > 0) summary.warnings = v.warnings;
 
       const content = [];
       if (includeImage) {

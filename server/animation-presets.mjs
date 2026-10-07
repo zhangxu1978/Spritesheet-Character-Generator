@@ -55,10 +55,15 @@ const ANIMATION_PRESETS = [
  */
 export function suggestAnimationPresetData(role) {
   const raw = ((role ?? "") + "").toLowerCase();
+  const weaponAnimationNote =
+    "武器/工具专属动作提醒：斧/镐的攻击动作是 tool_axe、锤是 tool_hammer、鞭是 tool_whip、法杖/钓竿是 tool_rod，" +
+    "这些不是标准 slash/thrust；大剑/长柄/弓等还有加大动作（slash_oversize / thrust_oversize / walk_128 等）。" +
+    "装备哪件武器就先用 get_item 查它的 animations 字段，把其中列出的动作名加进导出列表，否则导出的角色没有武器攻击帧。";
   if (!raw.trim()) {
     return {
       hint: "请先告诉我这个角色的用途",
       presets: ANIMATION_PRESETS.map((p) => ({ label: p.label, animations: p.animations })),
+      weaponAnimationNote,
     };
   }
   let best = ANIMATION_PRESETS.find((p) => p.keywords.some((kw) => raw.includes((kw + "").toLowerCase())));
@@ -71,5 +76,6 @@ export function suggestAnimationPresetData(role) {
       .filter((m) => m.label !== best.label)
       .map((m) => ({ label: m.label, animations: m.animations, rationale: m.rationale })),
     fullSheetAnimations: FULL_SHEET_ANIMATIONS.slice(),
+    weaponAnimationNote,
   };
 }

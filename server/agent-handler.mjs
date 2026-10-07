@@ -98,7 +98,9 @@ const TOOL_SCHEMAS = [
   },
   {
     name: "set_selection",
-    description: "写入一个 Selection。",
+    description:
+      "写入一个 Selection（装备部件）。selection 含 itemId / name；recolor / variant 应从 get_item 返回的 recolors / variants 里选。" +
+      "有 recolors 的部件（胸甲/裤子/靴子/头发/帽子等调色板部件）如果不给 recolor，会自动填默认色。",
     parameters: {
       type: "object",
       properties: {
@@ -132,8 +134,9 @@ const TOOL_SCHEMAS = [
   {
     name: "render_spritesheet",
     description:
-      "把当前 session 渲染并导出 PNG（base64）。默认导出完整精灵表（所有动作，高 3456px）。" +
-      "如果是 NPC / 小怪 / 摆件等无需全套动作的角色，务必传 animations 数组只打包需要的动作，这样 PNG 会小很多。",
+      "把当前 session 渲染并导出 PNG（base64）。默认导出完整精灵表（所有动作，标准部分高 3456px；装备专属动作武器/工具时下方还有更大的动作区）。" +
+      "如果是 NPC / 小怪 / 摆件等无需全套动作的角色，务必传 animations 数组只打包需要的动作，这样 PNG 会小很多。" +
+      "装备武器/工具时，把 get_item 查到的专属动作名（如 tool_axe）也放进 animations，否则没有武器攻击帧。",
     parameters: {
       type: "object",
       properties: {
@@ -144,6 +147,7 @@ const TOOL_SCHEMAS = [
           items: { type: "string" },
           description:
             "可选：要打包进 PNG 的动作列表（如 [\"idle\",\"walk\"]）。" +
+            "可含专属动作名（tool_axe / tool_rod / slash_oversize 等，见 get_item 的 animations 字段）。" +
             "不传 / 传空数组 → 导出完整大表。",
         },
       },
@@ -180,9 +184,21 @@ const SYSTEM_PROMPT = `你是一个精灵图（LPC spritesheet）生成助手。
    - 用 set_animation 切换预览（只是方便用户看，不影响 PNG 内容）；
    - 最后调用 render_spritesheet 时 **务必带上 animations: [...] 参数**（除非用户明确要求完整大表），把上一步确认过的动作列表传进去。
 
+## 武器/工具 → 动作映射（重要经验，序列帧必读）
+
+- 每个部件只渲染其元数据 animations 数组里列出的动作；标准动作（spellcast / thrust / walk / slash / shoot / hurt / climb / idle / jump / sit / emote / run / combat / 1h_backslash / 1h_halfslash）对所有部件通用。
+- 工具有「专属动作」（custom），标准 slash/thrust 行里不会出现它们：
+  * 斧/镐 → tool_axe（128px 劈砍）；锤 → tool_hammer（128px 锤击）；鞭 → tool_whip（192px 抽击）；法杖/钓竿 → tool_rod（128px 挥动，且鱼竿只有这一个动作）；
+  * 超大武器用 192px：slash_oversize（大剑/军刀/细剑/锤/镰刀/战斧）、thrust_oversize（长柄/法杖）、slash_reverse_oversize（长剑/棍棒/回旋镖）；
+  * 加大 128px：slash_128 / backslash_128 / halfslash_128 / thrust_128 / walk_128（武士刀/弯刀/武装剑/弓等）。
+- **装备武器后必须先 get_item(武器itemId)**：返回的 animations 字段就是该武器支持的全部动作（也是唯一权威来源）。要攻击帧就把其中的专属动作名加进 render_spritesheet 的 animations；不加 → 导出的角色行走时手里有武器，但没有武器攻击帧。
+- 例：「持斧士兵」= 军团胸甲 + 军团头盔 + 斧，animations 用 ["idle","walk","tool_axe"]；「持长剑骑士」攻击帧用 get_item 返回的 ["slash_oversize","thrust_oversize",…]；「渔夫」只有 ["tool_rod"]。
+- list_animations 返回里 custom:true 的条目带 usedBy 字段（哪些武器/工具声明了它），可用来反查。
+
 ## 其它规则
 - itemId 必须从 list_items / get_item 返回的字段里直接复制，不要编造；
 - selection 必须含 itemId + name，以及 variant 或 recolor；
+- **recolor / variant 必须从 get_item 的 recolors / variants 返回值里选**：胸甲、裤子、靴子、头发、帽子等调色板部件（get_item 返回 recolors 非空）都要配 recolor（如 "steel" / "brown"），漏了会自动填默认色但可能不符合用户要求的配色；
 - set_selection 必传 typeName（body / head / torso / legs / feet / hair / weapon 等）；
 - 如果用户说「随便 / 随机」，先给 NPC / 村民保守配置而不是完整大表；
 - 不要在 text 里堆砌结果说明，用工具完成动作，text 只做意图确认和建议。`;

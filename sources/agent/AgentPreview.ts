@@ -17,6 +17,8 @@ import {
   ANIMATIONS,
   FRAME_SIZE,
 } from "../state/constants.ts";
+import { getCustomAnimations } from "../canvas/preview-animation.ts";
+import { CUSTOM_ANIM_LABELS } from "./tools.ts";
 import type { AgentSession } from "./session.ts";
 
 interface Attrs {
@@ -52,22 +54,82 @@ interface State {
 }
 
 /** Presets available in the download dialog (keep labels short). */
-const DOWNLOAD_PRESETS: Array<{ key: string; label: string; animations: string[] }> = [
+const DOWNLOAD_PRESETS: Array<{
+  key: string;
+  label: string;
+  animations: string[];
+}> = [
   { key: "full", label: "完整大表", animations: [] },
   { key: "static", label: "静态摆件", animations: ["idle"] },
   { key: "npc", label: "NPC (待机+走)", animations: ["idle", "walk"] },
   { key: "shop", label: "商人 (待机+表情)", animations: ["idle", "emote"] },
   { key: "guard", label: "守卫", animations: ["idle", "walk", "hurt"] },
-  { key: "enemy", label: "近战小怪", animations: ["idle", "walk", "hurt", "slash"] },
-  { key: "ranged", label: "远程小怪", animations: ["idle", "walk", "hurt", "shoot", "spellcast"] },
-  { key: "boss", label: "BOSS", animations: ["idle", "walk", "run", "hurt", "slash", "spellcast", "jump"] },
-  { key: "player", label: "玩家主角", animations: [
-      "spellcast", "thrust", "walk", "slash", "shoot", "hurt",
-      "climb", "idle", "jump", "sit", "emote", "run",
-    ]
+  {
+    key: "enemy",
+    label: "近战小怪",
+    animations: ["idle", "walk", "hurt", "slash"],
   },
-  { key: "mount", label: "坐骑/宠物", animations: ["idle", "walk", "run", "hurt"] },
+  {
+    key: "ranged",
+    label: "远程小怪",
+    animations: ["idle", "walk", "hurt", "shoot", "spellcast"],
+  },
+  {
+    key: "boss",
+    label: "BOSS",
+    animations: ["idle", "walk", "run", "hurt", "slash", "spellcast", "jump"],
+  },
+  {
+    key: "player",
+    label: "玩家主角",
+    animations: [
+      "spellcast",
+      "thrust",
+      "walk",
+      "slash",
+      "shoot",
+      "hurt",
+      "climb",
+      "idle",
+      "jump",
+      "sit",
+      "emote",
+      "run",
+    ],
+  },
+  {
+    key: "mount",
+    label: "坐骑/宠物",
+    animations: ["idle", "walk", "run", "hurt"],
+  },
 ];
+
+type AnimOption = {
+  value: string;
+  label?: string;
+  custom?: boolean;
+  frameSize?: number;
+};
+
+/**
+ * Standard exportable animations + the custom animations (tool_axe, …)
+ * present in the current render — i.e. only those declared by the currently
+ * equipped weapon/tool, so the dialog never offers rows the PNG can't have.
+ */
+function currentAnimOptions(): AnimOption[] {
+  const standard: AnimOption[] = ANIMATIONS.filter(
+    (a) => !(a as { noExport?: boolean }).noExport,
+  );
+  const custom: AnimOption[] = Object.entries(getCustomAnimations()).map(
+    ([value, def]) => ({
+      value,
+      label: CUSTOM_ANIM_LABELS[value] ?? value,
+      custom: true,
+      frameSize: def.frameSize,
+    }),
+  );
+  return [...standard, ...custom];
+}
 
 export const AgentPreview: m.Component<Attrs, State> = {
   oninit(vnode) {
@@ -86,11 +148,15 @@ export const AgentPreview: m.Component<Attrs, State> = {
   },
 
   oncreate(vnode) {
-    const canvas = vnode.dom.querySelector("canvas") as HTMLCanvasElement | null;
+    const canvas = vnode.dom.querySelector(
+      "canvas",
+    ) as HTMLCanvasElement | null;
     if (!canvas) return;
     canvas.width = FRAME_SIZE * 4; // 4 directions
     canvas.height = FRAME_SIZE;
-    vnode.state.rafId = requestAnimationFrame((now) => oncreateTick(vnode, canvas, now));
+    vnode.state.rafId = requestAnimationFrame((now) =>
+      oncreateTick(vnode, canvas, now),
+    );
   },
 
   onremove(vnode) {
@@ -141,9 +207,15 @@ export const AgentPreview: m.Component<Attrs, State> = {
         ]),
         m("div.agent-preview__toolbar-right", [
           m("div.agent-preview__counter", [
-            m("span.agent-preview__counter-num", String(vnode.state.cycleIndex)),
+            m(
+              "span.agent-preview__counter-num",
+              String(vnode.state.cycleIndex),
+            ),
             m("span.agent-preview__counter-sep", "/"),
-            m("span.agent-preview__counter-total", String(Math.max(cycleLen - 1, 0))),
+            m(
+              "span.agent-preview__counter-total",
+              String(Math.max(cycleLen - 1, 0)),
+            ),
           ]),
           m(
             "button.agent-preview__download",
@@ -153,12 +225,16 @@ export const AgentPreview: m.Component<Attrs, State> = {
                 // Default to the animations the agent already selected;
                 // fall back to full sheet if agent didn't do selective export.
                 const included = vnode.attrs.lastIncludedAnimations;
+                const options = currentAnimOptions();
                 if (included && included.length > 0) {
-                  for (const a of ANIMATIONS) vnode.state.downloadSelection[a.value] = false;
-                  for (const v of included) vnode.state.downloadSelection[v] = true;
+                  for (const o of options)
+                    vnode.state.downloadSelection[o.value] = false;
+                  for (const v of included)
+                    vnode.state.downloadSelection[v] = true;
                   vnode.state.downloadPreset = "custom";
                 } else {
-                  for (const a of ANIMATIONS) vnode.state.downloadSelection[a.value] = true;
+                  for (const o of options)
+                    vnode.state.downloadSelection[o.value] = true;
                   vnode.state.downloadPreset = "full";
                 }
                 m.redraw();
@@ -172,9 +248,7 @@ export const AgentPreview: m.Component<Attrs, State> = {
           ),
         ]),
       ]),
-      vnode.state.downloadDialogOpen
-        ? renderDownloadDialog(vnode)
-        : null,
+      vnode.state.downloadDialogOpen ? renderDownloadDialog(vnode) : null,
 
       m("div.agent-preview__stage", [
         m("canvas.agent-preview__canvas", {
@@ -222,9 +296,11 @@ export const AgentPreview: m.Component<Attrs, State> = {
 
 function renderDownloadDialog(vnode: m.Vnode<Attrs, State>): m.Vnode {
   const sel = vnode.state.downloadSelection;
-  // Exportable animations (exclude internal-only marked with noExport)
-  const exportable = ANIMATIONS.filter((a) => !(a as { noExport?: boolean }).noExport);
-  const checkedCount = exportable.filter((a) => sel[a.value]).length;
+  // Standard exportable animations + custom ones present in the current
+  // render (tool_axe etc. — declared by the equipped weapon/tool).
+  const options = currentAnimOptions();
+  const customOptions = options.filter((o) => o.custom);
+  const checkedCount = options.filter((o) => sel[o.value]).length;
   const isFull = vnode.state.downloadPreset === "full";
 
   const applyPreset = (presetKey: string) => {
@@ -232,11 +308,12 @@ function renderDownloadDialog(vnode: m.Vnode<Attrs, State>): m.Vnode {
     const preset = DOWNLOAD_PRESETS.find((p) => p.key === presetKey);
     if (!preset) return;
     if (preset.animations.length === 0) {
-      // full → select every exportable
-      for (const a of exportable) vnode.state.downloadSelection[a.value] = true;
+      // full → select everything currently exportable (incl. custom areas)
+      for (const o of options) vnode.state.downloadSelection[o.value] = true;
     } else {
-      for (const a of exportable) vnode.state.downloadSelection[a.value] = false;
-      for (const v of preset.animations) vnode.state.downloadSelection[v] = true;
+      for (const o of options) vnode.state.downloadSelection[o.value] = false;
+      for (const v of preset.animations)
+        vnode.state.downloadSelection[v] = true;
     }
     m.redraw();
   };
@@ -247,14 +324,36 @@ function renderDownloadDialog(vnode: m.Vnode<Attrs, State>): m.Vnode {
   };
 
   const doDownload = () => {
-    const picked = exportable
-      .filter((a) => sel[a.value])
-      .map((a) => a.value);
-    // If all are on → pass undefined to mean "full sheet"
-    const allOn = picked.length === exportable.length;
+    const picked = options.filter((o) => sel[o.value]).map((o) => o.value);
+    // If everything is on → pass undefined to mean "full sheet"
+    const allOn = picked.length === options.length;
     vnode.attrs.onDownload?.(allOn ? undefined : picked);
     close();
   };
+
+  const renderAnimCheckbox = (o: AnimOption) =>
+    m("label.agent-dlmodal__anim", { key: o.value }, [
+      m("input", {
+        type: "checkbox",
+        checked: !!sel[o.value],
+        onchange: (e: Event) => {
+          const target = e.target as HTMLInputElement;
+          vnode.state.downloadSelection[o.value] = target.checked;
+          // Desyncs from preset → mark as custom
+          vnode.state.downloadPreset = "custom";
+          m.redraw();
+        },
+      }),
+      m("span.agent-dlmodal__anim-name", o.value),
+      o.custom
+        ? m(
+            "span.agent-dlmodal__anim-label",
+            ` ${o.label ?? ""} · ${o.frameSize}px 专属动作`,
+          )
+        : o.label && o.label !== o.value
+          ? m("span.agent-dlmodal__anim-label", o.label)
+          : null,
+    ]);
 
   return m("div.agent-dlmodal", [
     m("div.agent-dlmodal__backdrop", { onclick: close }),
@@ -287,40 +386,37 @@ function renderDownloadDialog(vnode: m.Vnode<Attrs, State>): m.Vnode {
         m("div.agent-dlmodal__section", [
           m("div.agent-dlmodal__section-title", [
             "逐个勾选",
-            m("span.agent-dlmodal__section-hint", `已选 ${checkedCount}/${exportable.length}`),
+            m(
+              "span.agent-dlmodal__section-hint",
+              `已选 ${checkedCount}/${options.length}`,
+            ),
           ]),
           m(
             "div.agent-dlmodal__anims",
-            exportable.map((a) =>
-              m(
-                "label.agent-dlmodal__anim",
-                { key: a.value },
-                [
-                  m("input", {
-                    type: "checkbox",
-                    checked: !!sel[a.value],
-                    onchange: (e: Event) => {
-                      const target = e.target as HTMLInputElement;
-                      vnode.state.downloadSelection[a.value] = target.checked;
-                      // Desyncs from preset → mark as custom
-                      vnode.state.downloadPreset = "custom";
-                      m.redraw();
-                    },
-                  }),
-                  m("span.agent-dlmodal__anim-name", a.value),
-                  a.label && a.label !== a.value
-                    ? m("span.agent-dlmodal__anim-label", a.label)
-                    : null,
-                ],
-              ),
-            ),
+            options.filter((o) => !o.custom).map(renderAnimCheckbox),
           ),
+          customOptions.length > 0
+            ? m("div.agent-dlmodal__section", [
+                m("div.agent-dlmodal__section-title", [
+                  "专属动作（当前装备的武器/工具）",
+                  m(
+                    "span.agent-dlmodal__section-hint",
+                    "大帧动作区，位于标准动作区下方",
+                  ),
+                ]),
+                m(
+                  "div.agent-dlmodal__anims",
+                  customOptions.map(renderAnimCheckbox),
+                ),
+              ])
+            : null,
           m("div.agent-dlmodal__row", [
             m(
               "button.agent-dlmodal__linkbtn",
               {
                 onclick: () => {
-                  for (const a of exportable) vnode.state.downloadSelection[a.value] = true;
+                  for (const o of options)
+                    vnode.state.downloadSelection[o.value] = true;
                   vnode.state.downloadPreset = "full";
                   m.redraw();
                 },
@@ -331,7 +427,8 @@ function renderDownloadDialog(vnode: m.Vnode<Attrs, State>): m.Vnode {
               "button.agent-dlmodal__linkbtn",
               {
                 onclick: () => {
-                  for (const a of exportable) vnode.state.downloadSelection[a.value] = false;
+                  for (const o of options)
+                    vnode.state.downloadSelection[o.value] = false;
                   vnode.state.downloadPreset = "custom";
                   m.redraw();
                 },
@@ -343,10 +440,12 @@ function renderDownloadDialog(vnode: m.Vnode<Attrs, State>): m.Vnode {
         m(
           "div.agent-dlmodal__tip",
           isFull
-            ? "💡 将导出完整精灵表（832 × 3456 px，17 个动作）。玩家主角适合这种模式，NPC 建议用精简版。"
-            : `🎯 只导出勾选的 ${checkedCount} 个动作，图片会比完整表小 ${exportable.length > 0
-                ? Math.round((1 - checkedCount / exportable.length) * 100)
-                : 0}%，非常适合 NPC / 怪物。`,
+            ? "💡 将导出完整精灵表（标准动作 832 × 3456 px；装备斧/大剑等时下方还有更大的专属动作区）。玩家主角适合这种模式，NPC 建议用精简版。"
+            : `🎯 只导出勾选的 ${checkedCount} 个动作，图片会比完整表小 ${
+                options.length > 0
+                  ? Math.round((1 - checkedCount / options.length) * 100)
+                  : 0
+              }%，非常适合 NPC / 怪物。`,
         ),
       ]),
       m("div.agent-dlmodal__foot", [
@@ -363,7 +462,10 @@ function renderDownloadDialog(vnode: m.Vnode<Attrs, State>): m.Vnode {
           },
           [
             m("span", "↓"),
-            m("span", isFull ? "导出完整 PNG" : `导出 ${checkedCount} 个动作 PNG`),
+            m(
+              "span",
+              isFull ? "导出完整 PNG" : `导出 ${checkedCount} 个动作 PNG`,
+            ),
           ],
         ),
       ]),
@@ -377,7 +479,8 @@ function oncreateTick(
   now: number,
 ): void {
   if (!vnode.state) return;
-  const cycle = ANIMATION_CONFIGS[vnode.state.animation as keyof typeof ANIMATION_CONFIGS];
+  const cycle =
+    ANIMATION_CONFIGS[vnode.state.animation as keyof typeof ANIMATION_CONFIGS];
   if (cycle) {
     const cycleLen = cycle.cycle.length;
     if (cycleLen > 0) {
@@ -385,7 +488,12 @@ function oncreateTick(
       if (now - vnode.state.lastFrame > fpsInterval) {
         vnode.state.cycleIndex = (vnode.state.cycleIndex + 1) % cycleLen;
         vnode.state.lastFrame = now;
-        drawFrame(canvas, vnode.attrs.session.getCanvas(), vnode.state.animation, vnode.state.cycleIndex);
+        drawFrame(
+          canvas,
+          vnode.attrs.session.getCanvas(),
+          vnode.state.animation,
+          vnode.state.cycleIndex,
+        );
       }
     }
   }
@@ -398,7 +506,9 @@ function oncreateTick(
     vnode.state.fpsCounter = 0;
     vnode.state.fpsLastTs = now;
   }
-  vnode.state.rafId = requestAnimationFrame((t) => oncreateTick(vnode, canvas, t));
+  vnode.state.rafId = requestAnimationFrame((t) =>
+    oncreateTick(vnode, canvas, t),
+  );
 }
 
 function drawFrame(
