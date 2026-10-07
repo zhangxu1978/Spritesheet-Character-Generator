@@ -123,7 +123,9 @@ const TOOL_SCHEMAS = [
   },
   {
     name: "set_animation",
-    description: "切换预览动作（仅影响预览时显示的行，不影响导出 PNG 的内容）。",
+    description:
+      "切换预览动作（仅影响预览时显示的行，不影响导出 PNG 的内容）。" +
+      "标准动作始终可用；专属动作（tool_axe / tool_rod / slash_oversize 等）需先装备声明它的武器/工具并渲染，否则预览为空。",
     parameters: {
       type: "object",
       properties: { animation: { type: "string" } },

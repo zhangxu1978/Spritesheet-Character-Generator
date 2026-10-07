@@ -17,7 +17,10 @@ import {
   ANIMATIONS,
   FRAME_SIZE,
 } from "../state/constants.ts";
-import { getCustomAnimations } from "../canvas/preview-animation.ts";
+import {
+  getCustomAnimations,
+  getCustomAnimYPositions,
+} from "../canvas/preview-animation.ts";
 import { CUSTOM_ANIM_LABELS } from "./tools.ts";
 import type { AgentSession } from "./session.ts";
 
@@ -131,6 +134,16 @@ function currentAnimOptions(): AnimOption[] {
   return [...standard, ...custom];
 }
 
+/** Cycle frame count for the animation being previewed (custom-aware). */
+function cycleLengthFor(animation: string): number {
+  const customDef = getCustomAnimations()[animation];
+  if (customDef) return customDef.frames[0].length;
+  return (
+    ANIMATION_CONFIGS[animation as keyof typeof ANIMATION_CONFIGS]?.cycle
+      .length ?? 0
+  );
+}
+
 export const AgentPreview: m.Component<Attrs, State> = {
   oninit(vnode) {
     vnode.state.rafId = null;
@@ -177,8 +190,7 @@ export const AgentPreview: m.Component<Attrs, State> = {
   view(vnode) {
     const session = vnode.attrs.session;
     const current = vnode.state.animation;
-    const cfg = ANIMATION_CONFIGS[current as keyof typeof ANIMATION_CONFIGS];
-    const cycleLen = cfg?.cycle.length ?? 0;
+    const cycleLen = cycleLengthFor(current);
     const selections = session.getSelections();
     const equippedCount = Object.keys(selections).length;
 
@@ -196,13 +208,23 @@ export const AgentPreview: m.Component<Attrs, State> = {
                 vnode.attrs.onAnimationChange?.(v);
               },
             },
-            ANIMATIONS.map((a) =>
-              m(
-                "option",
-                { value: a.value, selected: a.value === current },
-                `${a.value}${a.label && a.label !== a.value ? ` (${a.label})` : ""}`,
+            [
+              ...ANIMATIONS.map((a) =>
+                m(
+                  "option",
+                  { value: a.value, selected: a.value === current },
+                  `${a.value}${a.label && a.label !== a.value ? ` (${a.label})` : ""}`,
+                ),
               ),
-            ),
+              // Custom animation areas rendered for the equipped weapon/tool.
+              ...Object.entries(getCustomAnimations()).map(([value, def]) =>
+                m(
+                  "option",
+                  { value, selected: value === current },
+                  `${value} (${CUSTOM_ANIM_LABELS[value] ?? value} · ${def.frameSize}px)`,
+                ),
+              ),
+            ],
           ),
         ]),
         m("div.agent-preview__toolbar-right", [
@@ -479,22 +501,18 @@ function oncreateTick(
   now: number,
 ): void {
   if (!vnode.state) return;
-  const cycle =
-    ANIMATION_CONFIGS[vnode.state.animation as keyof typeof ANIMATION_CONFIGS];
-  if (cycle) {
-    const cycleLen = cycle.cycle.length;
-    if (cycleLen > 0) {
-      const fpsInterval = 1000 / 8;
-      if (now - vnode.state.lastFrame > fpsInterval) {
-        vnode.state.cycleIndex = (vnode.state.cycleIndex + 1) % cycleLen;
-        vnode.state.lastFrame = now;
-        drawFrame(
-          canvas,
-          vnode.attrs.session.getCanvas(),
-          vnode.state.animation,
-          vnode.state.cycleIndex,
-        );
-      }
+  const cycleLen = cycleLengthFor(vnode.state.animation);
+  if (cycleLen > 0) {
+    const fpsInterval = 1000 / 8;
+    if (now - vnode.state.lastFrame > fpsInterval) {
+      vnode.state.cycleIndex = (vnode.state.cycleIndex + 1) % cycleLen;
+      vnode.state.lastFrame = now;
+      drawFrame(
+        canvas,
+        vnode.attrs.session.getCanvas(),
+        vnode.state.animation,
+        vnode.state.cycleIndex,
+      );
     }
   }
   // FPS meter — refresh every ~500ms.
@@ -529,8 +547,42 @@ function drawFrame(
     return;
   }
 
+  // Custom animation area (tool_axe, …): larger frames appended below the
+  // standard sheet, 4 direction rows of `frameSize` px.
+  const customDef = getCustomAnimations()[animation];
+  if (customDef) {
+    const frameSize = customDef.frameSize;
+    const yOffset = getCustomAnimYPositions()[animation];
+    target.width = frameSize * 4;
+    target.height = frameSize;
+    if (yOffset === undefined) {
+      ctx.fillStyle = "#888";
+      ctx.font = "14px sans-serif";
+      ctx.fillText("装备对应武器/工具后渲染才可预览", 8, frameSize / 2);
+      return;
+    }
+    const frameCount = customDef.frames[0].length;
+    const frame = cycleIndex % frameCount;
+    for (let i = 0; i < 4; i++) {
+      ctx.drawImage(
+        src,
+        frame * frameSize,
+        yOffset + i * frameSize,
+        frameSize,
+        frameSize,
+        i * frameSize,
+        0,
+        frameSize,
+        frameSize,
+      );
+    }
+    return;
+  }
+
   const cfg = ANIMATION_CONFIGS[animation as keyof typeof ANIMATION_CONFIGS];
   if (!cfg) return;
+  target.width = FRAME_SIZE * 4;
+  target.height = FRAME_SIZE;
   const frame = cfg.cycle[cycleIndex] ?? 0;
   const rowStart = cfg.row;
   const num = cfg.num;

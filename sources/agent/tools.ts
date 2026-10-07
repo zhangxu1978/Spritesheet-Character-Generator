@@ -19,6 +19,7 @@ import {
   isSelection,
 } from "./session.ts";
 import { customAnimations, customAnimationBase } from "../custom-animations.ts";
+import { getCustomAnimations } from "../canvas/preview-animation.ts";
 import { defaultCatalog, catalogReady } from "../state/catalog.ts";
 import { normalizeSelectionRecolor } from "../state/selection-normalize.ts";
 import type {
@@ -460,28 +461,46 @@ interface SetAnimationArgs {
 
 const setAnimationSchema: ToolSchema = {
   name: "set_animation",
-  description: "切换预览动作。",
+  description:
+    "切换预览动作。标准动作始终可用；专属动作（tool_axe / tool_rod / slash_oversize 等）只有当前装备了声明它的武器/工具并渲染后才看得到，否则预览为空。",
   parameters: {
     type: "object",
     properties: {
-      animation: { type: "string", enum: ANIMATION_LIST.map((a) => a.value) },
+      animation: {
+        type: "string",
+        enum: FULL_ANIMATION_LIST.map((a) => a.value),
+      },
     },
     required: ["animation"],
     additionalProperties: false,
   },
 };
 
+const ALL_ANIMATION_VALUES = new Set(FULL_ANIMATION_LIST.map((a) => a.value));
+
 async function setAnimation(
   ctx: ToolContext,
   args: SetAnimationArgs,
 ): Promise<ToolResult> {
-  if (!ALLOWED_ANIMATIONS.has(args.animation)) {
+  if (!ALL_ANIMATION_VALUES.has(args.animation)) {
     return toolError(
       "invalid-args",
-      `unsupported animation: ${args.animation}`,
+      `unsupported animation: ${args.animation}（可用：${[...ALL_ANIMATION_VALUES].join(", ")}）`,
     );
   }
   ctx.session.setAnimation(args.animation);
+  // Custom animation areas only exist after the declaring weapon/tool was
+  // equipped and rendered; warn instead of failing so the LLM can recover.
+  const renderedCustom = getCustomAnimations();
+  if (
+    renderedCustom[args.animation] === undefined &&
+    ALLOWED_ANIMATIONS.has(args.animation) === false
+  ) {
+    return okData({
+      animation: ctx.session.getAnimation(),
+      warning: `动作 ${args.animation} 是专属动作，当前装备的武器/工具没有渲染它——预览会是空白。先 set_selection 装备声明它的武器/工具（用 get_item 查该武器的 animations 字段），再重试。`,
+    });
+  }
   return okData({ animation: ctx.session.getAnimation() });
 }
 

@@ -30,10 +30,16 @@ import {
   extractSelectedAnimationsDetailed,
 } from "../canvas/renderer.ts";
 import { defaultCatalog, catalogReady } from "../state/catalog.ts";
+import { customAnimations } from "../custom-animations.ts";
 import type { ToolSession } from "./types.ts";
 
 const ALLOWED_BODY_TYPES = new Set(BODY_TYPES);
-const ALLOWED_ANIMATIONS = new Set(ANIMATIONS.map((a) => a.value));
+// Preview animations: standard rows + custom animation areas (tool_axe, …)
+// that the renderer can produce for equipped weapons/tools.
+const ALLOWED_ANIMATIONS = new Set([
+  ...ANIMATIONS.map((a) => a.value),
+  ...Object.keys(customAnimations),
+]);
 
 /** Equivalent of state.ts getSelectionGroup — reads catalog for the item's type_name. */
 function getSelectionGroupForItem(itemId: string): string {
